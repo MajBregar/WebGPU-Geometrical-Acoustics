@@ -1,4 +1,5 @@
 import { VoxelMeshBuilder } from "./voxel_mesh_builder.js";
+import { generateRoom } from "./room_generation.js";
 
 export class Loader {
 
@@ -28,7 +29,7 @@ export class Loader {
         const vsh = await this.loadShader(this.vertexShaderURL);
         const fsh = await this.loadShader(this.fragmentShaderURL);
 
-        const voxelData = this.createVoxelRoom();
+        const voxelData = generateRoom(this.room_dimensions);
         this.createUniformBuffer();
 
         const mesh = this.buildVoxelMesh(voxelData);
@@ -41,68 +42,6 @@ export class Loader {
     async loadShader(url) {
         const res = await fetch(url);
         return await res.text();
-    }
-
-
-
-    createVoxelRoom() {
-        const room_dimensions = this.room_dimensions;
-        const voxelData = new Uint8Array(room_dimensions[0] * room_dimensions[1] * room_dimensions[2] * 4);
-
-        for (let z = 0; z < room_dimensions[2]; z++)
-        for (let y = 0; y < room_dimensions[1]; y++)
-        for (let x = 0; x < room_dimensions[0]; x++) {
-            //temporary random voxel initialization
-
-            const i = (z * room_dimensions[1] * room_dimensions[0] + y * room_dimensions[0] + x) * 4;
-
-            const isFloor = (y === 0);
-
-            const isWall =
-                (x === 0) ||
-                (z === 0) ||
-                (z === room_dimensions[2] - 1) ||
-                (x === room_dimensions[0] - 1 ? false : false); 
-
-            const isCeiling = (y === room_dimensions[1] - 1);
-
-            if (isFloor) {
-                voxelData[i + 0] = 150;
-                voxelData[i + 1] = 150;
-                voxelData[i + 2] = 150;
-                voxelData[i + 3] = 255;
-                continue;
-            }
-
-            if (isWall) {
-                voxelData[i + 0] = 200;
-                voxelData[i + 1] = 50;
-                voxelData[i + 2] = 50;
-                voxelData[i + 3] = 255;
-                continue;
-            }
-
-            if (x === room_dimensions[0] - 1) {
-                voxelData[i + 3] = 0; 
-                continue;
-            }
-
-            if (isCeiling) {
-                voxelData[i + 3] = 0;
-                continue;
-            }
-
-            if (Math.random() < 0.003) {
-                voxelData[i + 0] = 50;
-                voxelData[i + 1] = 200;
-                voxelData[i + 2] = 50;
-                voxelData[i + 3] = 255;
-            } else {
-                voxelData[i + 3] = 0;
-            }
-        }
-
-        return voxelData;
     }
 
     createDepthTexture(width, height) {

@@ -11,10 +11,10 @@ html, body {
 }
 
 #gfx {
-    width: 70vw;
-    height: 70vh;
+    width: 90vw;
+    height: 90vh;
     display: block;
-    background: #fff;          /* white canvas background */
+    background: #fff;
 }
 
 #fps {
