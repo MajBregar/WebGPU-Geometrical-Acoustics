@@ -2,8 +2,9 @@ import { VoxelMeshBuilder } from "./voxel_mesh_builder.js";
 
 export class Loader {
 
-    constructor(device) {
+    constructor(device, settings) {
         this.device = device;
+        this.settings = settings;
 
         this.pipeline = null;
         this.bindGroup = null;
@@ -13,12 +14,12 @@ export class Loader {
         this.indexBuffer = null;
         this.indexCount = 0;
 
-        this.SIZE = 256;
+        this.room_dimensions = settings.SIMULATION.room_dimensions;
+        
 
         this.vertexShaderURL = "./core/shaders/render_room_vsh.wgsl";
         this.fragmentShaderURL = "./core/shaders/render_room_fsh.wgsl";
 
-        // Added:
         this.depthTexture = null;
         this.depthFormat = "depth24plus";
     }
@@ -45,30 +46,26 @@ export class Loader {
 
 
     createVoxelRoom() {
-        const SIZE = this.SIZE;
-        const voxelData = new Uint8Array(SIZE * SIZE * SIZE * 4);
+        const room_dimensions = this.room_dimensions;
+        const voxelData = new Uint8Array(room_dimensions[0] * room_dimensions[1] * room_dimensions[2] * 4);
 
-        for (let z = 0; z < SIZE; z++)
-        for (let y = 0; y < SIZE; y++)
-        for (let x = 0; x < SIZE; x++) {
+        for (let z = 0; z < room_dimensions[2]; z++)
+        for (let y = 0; y < room_dimensions[1]; y++)
+        for (let x = 0; x < room_dimensions[0]; x++) {
+            //temporary random voxel initialization
 
-            const i = (z * SIZE * SIZE + y * SIZE + x) * 4;
+            const i = (z * room_dimensions[1] * room_dimensions[0] + y * room_dimensions[0] + x) * 4;
 
             const isFloor = (y === 0);
 
-            // Walls except the +X wall (x = SIZE-1)
             const isWall =
-                (x === 0) ||           // -X wall
-                (z === 0) ||           // -Z wall
-                (z === SIZE - 1) ||    // +Z wall
-                (x === SIZE - 1 ? false : false); 
-            // x = SIZE-1 is intentionally skipped
+                (x === 0) ||
+                (z === 0) ||
+                (z === room_dimensions[2] - 1) ||
+                (x === room_dimensions[0] - 1 ? false : false); 
 
-            const isCeiling = (y === SIZE - 1);
+            const isCeiling = (y === room_dimensions[1] - 1);
 
-            // ----------------------------------
-            // FLOOR (gray)
-            // ----------------------------------
             if (isFloor) {
                 voxelData[i + 0] = 150;
                 voxelData[i + 1] = 150;
@@ -77,9 +74,6 @@ export class Loader {
                 continue;
             }
 
-            // ----------------------------------
-            // WALLS (red), except the missing wall
-            // ----------------------------------
             if (isWall) {
                 voxelData[i + 0] = 200;
                 voxelData[i + 1] = 50;
@@ -88,26 +82,17 @@ export class Loader {
                 continue;
             }
 
-            // ----------------------------------
-            // OPEN WALL (x = SIZE-1) → empty
-            // ----------------------------------
-            if (x === SIZE - 1) {
-                voxelData[i + 3] = 0; // empty
+            if (x === room_dimensions[0] - 1) {
+                voxelData[i + 3] = 0; 
                 continue;
             }
 
-            // ----------------------------------
-            // CEILING (empty)
-            // ----------------------------------
             if (isCeiling) {
                 voxelData[i + 3] = 0;
                 continue;
             }
 
-            // ----------------------------------
-            // INTERIOR RANDOM GREEN BLOCKS (10%)
-            // ----------------------------------
-            if (Math.random() < 0.01) {
+            if (Math.random() < 0.003) {
                 voxelData[i + 0] = 50;
                 voxelData[i + 1] = 200;
                 voxelData[i + 2] = 50;
@@ -129,18 +114,11 @@ export class Loader {
     }
 
 
-
-    //--------------------------------------------------------
-    // Use VoxelMeshBuilder to generate a mesh
-    //--------------------------------------------------------
     buildVoxelMesh(voxelData) {
-        const builder = new VoxelMeshBuilder(this.SIZE);
+        const builder = new VoxelMeshBuilder(this.room_dimensions);
         return builder.build(voxelData);
     }
 
-    //--------------------------------------------------------
-    // Upload vertex + index buffers
-    //--------------------------------------------------------
     createMeshBuffers(mesh) {
         const device = this.device;
 
@@ -163,20 +141,15 @@ export class Loader {
         this.indexBuffer.unmap();
     }
 
-    //--------------------------------------------------------
-    // Uniform UBO (replaces createCameraBuffer)
-    //--------------------------------------------------------
+
     createUniformBuffer() {
-        // same size: 36 floats (144 bytes)
         this.uniformBuffer = this.device.createBuffer({
             size: 36 * 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
     }
 
-    //--------------------------------------------------------
-    // Pipeline setup
-    //--------------------------------------------------------
+
     createPipeline(vsh, fsh) {
         const device = this.device;
 
@@ -209,7 +182,6 @@ export class Loader {
                 cullMode: "none"
             },
 
-            // ⭐ REQUIRED FOR CORRECT DEPTH TESTING ⭐
             depthStencil: {
                 format: this.depthFormat,
                 depthWriteEnabled: true,

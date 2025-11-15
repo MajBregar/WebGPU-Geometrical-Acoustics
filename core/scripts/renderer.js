@@ -1,24 +1,23 @@
-//
-// renderer.js
-// Renderer that draws voxel mesh created by Loader
-//
 
 import { mulMat4, invertMat4 } from "./math.js";
 import { lookAt, perspective } from "./matrix_helpers.js";
 
 export class Renderer {
 
-    constructor(canvas, device, loader, controller) {
+    constructor(canvas, device, loader, controller, settings) {
         this.canvas = canvas;
         this.device = device;
         this.loader = loader;
         this.controller = controller;
+        this.settings = settings;
 
         this.context = null;
         this.format = null;
         this.initialized = false;
 
         this.depthView = null;
+        this.depthWidth = 0;
+        this.depthHeight = 0;
 
         this.init();
     }
@@ -33,37 +32,32 @@ export class Renderer {
             alphaMode: "opaque"
         });
 
-        // ----------------------------------------------------
-        // Create depth texture sized for the canvas
-        // ----------------------------------------------------
         this.resizeDepthTexture();
 
         this.initialized = true;
     }
 
-    // --------------------------------------------------------
-    // Resize depth texture when canvas size changes
-    // --------------------------------------------------------
     resizeDepthTexture() {
         const loader = this.loader;
+        const width = this.canvas.width;
+        const height = this.canvas.height;
 
-        loader.createDepthTexture(this.canvas.width, this.canvas.height);
+        loader.createDepthTexture(width, height);
         this.depthView = loader.depthTexture.createView();
+
+        this.depthWidth = width;
+        this.depthHeight = height;
     }
 
-    // --------------------------------------------------------
-    // Build and upload camera matrices to uniform buffer
-    // --------------------------------------------------------
     updateUniforms() {
         const loader = this.loader;
-        const size = loader.SIZE;
+        const settings = this.settings;
+        const room_dimensions = loader.room_dimensions;
         const ctrl = this.controller;
-
         const aspect = this.canvas.width / this.canvas.height;
 
-        // Camera angles
         const yaw   = ctrl.getYaw();
-        const pitch = Math.max(-1.5, Math.min(1.5, ctrl.getPitch()));
+        const pitch = ctrl.getPitch();
         const dist  = ctrl.getZoom();
 
         const camera_pos = [
@@ -72,22 +66,21 @@ export class Renderer {
             Math.cos(pitch) * Math.sin(yaw) * dist
         ];
 
-        const target = [size / 2, size / 2, size / 2];
+        const target = [room_dimensions[0] / 2, room_dimensions[1] / 2, room_dimensions[2] / 2];
         const up = [0, 1, 0];
 
         const view = lookAt(camera_pos, target, up);
 
         const proj = perspective(
-            Math.PI / 2,
+            settings.CAMERA.fov,
             aspect,
-            0.1,
-            500.0
+            settings.CAMERA.near,
+            settings.CAMERA.far
         );
 
         const viewProj = mulMat4(proj, view);
         const invViewProj = invertMat4(viewProj);
 
-        // Upload uniforms (144 bytes)
         const uni = new Float32Array(36);
         uni.set(viewProj, 0);
         uni.set(invViewProj, 16);
@@ -97,15 +90,12 @@ export class Renderer {
         this.device.queue.writeBuffer(
             loader.uniformBuffer,
             0,
-            uni.buffer,
-            0,
-            uni.byteLength
+            uni
         );
+
     }
 
-    // --------------------------------------------------------
-    // Render frame
-    // --------------------------------------------------------
+
     renderFrame() {
         if (!this.initialized) return;
 
@@ -120,23 +110,21 @@ export class Renderer {
             return;
         }
 
-        // In case canvas resized: ensure depth texture matches
-        if (!this.depthView ||
-            this.depthView.width !== this.canvas.width ||
-            this.depthView.height !== this.canvas.height)
-        {
+        
+        const w = this.canvas.clientWidth;
+        const h = this.canvas.clientHeight;
+
+        if (this.canvas.width !== w || this.canvas.height !== h) {
+            this.canvas.width = w;
+            this.canvas.height = h;
             this.resizeDepthTexture();
         }
 
-        // Upload uniforms
+        
         this.updateUniforms();
-
         const device = this.device;
         const encoder = device.createCommandEncoder();
 
-        // ----------------------------------------------------
-        // Render pass WITH DEPTH ATTACHMENT
-        // ----------------------------------------------------
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
                 view: this.context.getCurrentTexture().createView(),

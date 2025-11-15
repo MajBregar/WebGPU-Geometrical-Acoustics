@@ -1,10 +1,7 @@
-
 export class VoxelMeshBuilder {
 
-    constructor(size) {
-        this.SIZE = size;
-
-        // Cube face definitions
+    constructor(dimensions) {
+        this.dimensions = dimensions;
         this.faces = [
             { // +X
                 dir: [1, 0, 0],
@@ -64,28 +61,45 @@ export class VoxelMeshBuilder {
     }
 
     build(voxelData) {
-        const SIZE = this.SIZE;
+        const dims = this.dimensions;
 
         const vertices = [];
         const indices = [];
 
-        let indexOffset = 0;
+        const vertexMap = new Map();
 
         function voxelAt(x, y, z) {
-            if (x < 0 || x >= SIZE ||
-                y < 0 || y >= SIZE ||
-                z < 0 || z >= SIZE) return 0;
-            const i = (z * SIZE * SIZE + y * SIZE + x) * 4;
+            if (x < 0 || x >= dims[0] ||
+                y < 0 || y >= dims[1] ||
+                z < 0 || z >= dims[2]) return 0;
+
+            const i = (z * dims[1] * dims[0] + y * dims[0] + x) * 4;
             return voxelData[i + 3] > 0 ? 1 : 0;
         }
 
-        for (let z = 0; z < SIZE; z++)
-        for (let y = 0; y < SIZE; y++)
-        for (let x = 0; x < SIZE; x++) {
+        function addVertex(x, y, z, r, g, b) {
+            const key = `${x}_${y}_${z}_${r}_${g}_${b}`;
 
-            const i = (z * SIZE * SIZE + y * SIZE + x) * 4;
-            const solid = voxelData[i + 3] > 0;
-            if (!solid) continue;
+            if (vertexMap.has(key)) {
+                return vertexMap.get(key);
+            }
+
+            const index = vertices.length / 6;
+            vertices.push(x, y, z, r, g, b);
+            vertexMap.set(key, index);
+            return index;
+        }
+
+        for (let z = 0; z < dims[2]; z++)
+        for (let y = 0; y < dims[1]; y++)
+        for (let x = 0; x < dims[0]; x++) {
+
+            const i = (z * dims[1] * dims[0] + y * dims[0] + x) * 4;
+            if (voxelData[i + 3] === 0) continue;
+
+            const r = voxelData[i + 0] / 255;
+            const g = voxelData[i + 1] / 255;
+            const b = voxelData[i + 2] / 255;
 
             for (const face of this.faces) {
                 const nx = x + face.dir[0];
@@ -94,25 +108,24 @@ export class VoxelMeshBuilder {
 
                 if (voxelAt(nx, ny, nz)) continue;
 
-                const r = voxelData[i + 0] / 255;
-                const g = voxelData[i + 1] / 255;
-                const b = voxelData[i + 2] / 255;
-
-                for (const c of face.corners) {
-                    vertices.push(
-                        x + c[0],
-                        y + c[1],
-                        z + c[2],
-                        r, g, b
-                    );
-                }
-
-                indices.push(
-                    indexOffset, indexOffset + 1, indexOffset + 2,
-                    indexOffset, indexOffset + 2, indexOffset + 3
-                );
-
-                indexOffset += 4;
+                const v0 = addVertex(x + face.corners[0][0],
+                                     y + face.corners[0][1],
+                                     z + face.corners[0][2],
+                                     r, g, b);
+                const v1 = addVertex(x + face.corners[1][0],
+                                     y + face.corners[1][1],
+                                     z + face.corners[1][2],
+                                     r, g, b);
+                const v2 = addVertex(x + face.corners[2][0],
+                                     y + face.corners[2][1],
+                                     z + face.corners[2][2],
+                                     r, g, b);
+                const v3 = addVertex(x + face.corners[3][0],
+                                     y + face.corners[3][1],
+                                     z + face.corners[3][2],
+                                     r, g, b);
+                
+                indices.push(v0, v1, v2, v0, v2, v3);
             }
         }
 

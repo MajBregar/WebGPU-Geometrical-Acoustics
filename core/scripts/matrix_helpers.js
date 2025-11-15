@@ -19,16 +19,19 @@ export function perspective(fov, aspect, near, far) {
 
     out[8]  = 0;
     out[9]  = 0;
-    out[10] = (far + near) * nf;
+
+    out[10] = far * nf;
     out[11] = -1;
 
     out[12] = 0;
     out[13] = 0;
-    out[14] = (2 * far * near) * nf;
+
+    out[14] = (far * near) * nf;
     out[15] = 0;
 
     return out;
 }
+
 
 export function lookAt(eye, target, up) {
     const z = normalize3(sub3(eye, target)); 

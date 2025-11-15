@@ -1,0 +1,25 @@
+{
+
+    "SIMULATION" : {
+        "room_dimensions" : [128, 64, 128]
+    },
+
+
+    "CAMERA" : {
+        "fov": 1.5708,
+        "far": 2000,
+        "near": 0.1
+    },
+
+    "CONTROLS" : {
+        "mouse_sensitivity": 0.004,
+        "zoom_sensitivity": 0.05,
+        "start_yaw" : 0.0,
+        "start_pitch" : 0.0,
+        "start_zoom" : 200,
+        "min_zoom" : 0.5,
+        "max_zoom" : 700
+    }
+
+    
+}

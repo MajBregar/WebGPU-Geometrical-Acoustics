@@ -5,56 +5,53 @@ import { Controller } from "./core/scripts/controller.js";
 const canvas = document.getElementById("gfx");
 canvas.width = canvas.clientWidth;
 canvas.height = canvas.clientHeight;
-
 const fpsDiv = document.getElementById("fps");
 
-// WebGPU init
 const adapter = await navigator.gpu.requestAdapter();
 if (!adapter) {
     throw new Error("WebGPU adapter not found.");
 }
 const device = await adapter.requestDevice();
 
-// Load assets
-const loader = new Loader(device);
+
+const settingsResponse = await fetch("./settings.json");
+const settings = await settingsResponse.json();
+
+
+const loader = new Loader(device, settings);
 await loader.init();
+const controller = new Controller(canvas, settings);
+const renderer = new Renderer(canvas, device, loader, controller, settings);
 
-// Input controller
-const controller = new Controller(canvas);
 
-// Renderer
-const renderer = new Renderer(canvas, device, loader, controller);
 
-// --------------------------------------------------------
-// FPS COUNTER
-// --------------------------------------------------------
 let lastTime = performance.now();
-let frameCount = 0;
+let gpuFrames = 0;
 
-function updateFPS() {
+async function updateGPUFPS() {
+    await device.queue.onSubmittedWorkDone();
+
+    gpuFrames++;
     const now = performance.now();
-    frameCount++;
+
     if (now - lastTime >= 500) {
-        const fps = (frameCount * 1000) / (now - lastTime);
-        fpsDiv.textContent = `FPS: ${fps.toFixed(1)}`;
+        const fps = (gpuFrames * 1000) / (now - lastTime);
+        fpsDiv.textContent = `GPU FPS: ${fps.toFixed(1)}`;
+        gpuFrames = 0;
         lastTime = now;
-        frameCount = 0;
     }
 }
 
-// --------------------------------------------------------
-// GAME LOOP
-// --------------------------------------------------------
+
 let running = true;
-
-function gameLoop() {
+async function gameLoop() {
     if (running) {
+        const start = performance.now();
+
         renderer.renderFrame();
-        updateFPS();
+        updateGPUFPS(start);
     }
-    setTimeout(gameLoop, 0);
+
+    requestAnimationFrame(gameLoop);
 }
-
 gameLoop();
-
-
