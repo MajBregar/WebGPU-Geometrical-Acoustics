@@ -2,8 +2,24 @@
 
     "SIMULATION" : {
         "room_dimensions" : [128, 64, 128]
+
     },
 
+    "LIGHTING": {
+        "direction": [ -0.4, -1.0, -0.3 ],
+        "color": [ 1.0, 1.0, 1.0],
+        "intensity": 3.0,
+
+        "shadow_map": {
+            "enabled": true,
+            "map_resolution": 2048,
+            "bias": 0.0005,
+            "normal_bias": 0.0015,
+            "near": 1.0,
+            "far": 4000.0,
+            "ortho_size": 30.0
+        }
+    },
 
     "CAMERA" : {
         "fov": 1.5708,

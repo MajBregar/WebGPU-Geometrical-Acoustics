@@ -77,15 +77,19 @@ export class VoxelMeshBuilder {
             return voxelData[i + 3] > 0 ? 1 : 0;
         }
 
-        function addVertex(x, y, z, r, g, b) {
-            const key = `${x}_${y}_${z}_${r}_${g}_${b}`;
+        function addVertex(px, py, pz, nx, ny, nz, r, g, b) {
+            const key = `${px}_${py}_${pz}_${nx}_${ny}_${nz}_${r}_${g}_${b}`;
 
             if (vertexMap.has(key)) {
                 return vertexMap.get(key);
             }
 
-            const index = vertices.length / 6;
-            vertices.push(x, y, z, r, g, b);
+            const index = vertices.length / 9; // 9 floats per vertex
+            vertices.push(
+                px, py, pz,
+                nx, ny, nz,
+                r, g, b
+            );
             vertexMap.set(key, index);
             return index;
         }
@@ -102,29 +106,47 @@ export class VoxelMeshBuilder {
             const b = voxelData[i + 2] / 255;
 
             for (const face of this.faces) {
+
                 const nx = x + face.dir[0];
                 const ny = y + face.dir[1];
                 const nz = z + face.dir[2];
 
                 if (voxelAt(nx, ny, nz)) continue;
 
-                const v0 = addVertex(x + face.corners[0][0],
-                                     y + face.corners[0][1],
-                                     z + face.corners[0][2],
-                                     r, g, b);
-                const v1 = addVertex(x + face.corners[1][0],
-                                     y + face.corners[1][1],
-                                     z + face.corners[1][2],
-                                     r, g, b);
-                const v2 = addVertex(x + face.corners[2][0],
-                                     y + face.corners[2][1],
-                                     z + face.corners[2][2],
-                                     r, g, b);
-                const v3 = addVertex(x + face.corners[3][0],
-                                     y + face.corners[3][1],
-                                     z + face.corners[3][2],
-                                     r, g, b);
-                
+                const N = face.dir;
+
+                const v0 = addVertex(
+                    x + face.corners[0][0],
+                    y + face.corners[0][1],
+                    z + face.corners[0][2],
+                    N[0], N[1], N[2],
+                    r, g, b
+                );
+
+                const v1 = addVertex(
+                    x + face.corners[1][0],
+                    y + face.corners[1][1],
+                    z + face.corners[1][2],
+                    N[0], N[1], N[2],
+                    r, g, b
+                );
+
+                const v2 = addVertex(
+                    x + face.corners[2][0],
+                    y + face.corners[2][1],
+                    z + face.corners[2][2],
+                    N[0], N[1], N[2],
+                    r, g, b
+                );
+
+                const v3 = addVertex(
+                    x + face.corners[3][0],
+                    y + face.corners[3][1],
+                    z + face.corners[3][2],
+                    N[0], N[1], N[2],
+                    r, g, b
+                );
+
                 indices.push(v0, v1, v2, v0, v2, v3);
             }
         }
@@ -135,4 +157,5 @@ export class VoxelMeshBuilder {
             indexCount: indices.length
         };
     }
+
 }

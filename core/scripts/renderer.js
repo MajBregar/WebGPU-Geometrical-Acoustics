@@ -66,11 +66,15 @@ export class Renderer {
             Math.cos(pitch) * Math.sin(yaw) * dist
         ];
 
-        const target = [room_dimensions[0] / 2, room_dimensions[1] / 2, room_dimensions[2] / 2];
+        const target = [
+            room_dimensions[0] * 0.5,
+            room_dimensions[1] * 0.5,
+            room_dimensions[2] * 0.5
+        ];
+
         const up = [0, 1, 0];
 
         const view = lookAt(camera_pos, target, up);
-
         const proj = perspective(
             settings.CAMERA.fov,
             aspect,
@@ -81,19 +85,48 @@ export class Renderer {
         const viewProj = mulMat4(proj, view);
         const invViewProj = invertMat4(viewProj);
 
-        const uni = new Float32Array(36);
+        const light = settings.LIGHTING;
+        const sh = light.shadow_map;
+
+        const lightDir = light.direction;
+        const lightColor = light.color;
+        const lightIntensity = light.intensity;
+
+        const shadowMat = new Float32Array([
+            1,0,0,0,
+            0,1,0,0,
+            0,0,1,0,
+            0,0,0,1
+        ]);
+
+        const uni = new Float32Array(64);
+
         uni.set(viewProj, 0);
         uni.set(invViewProj, 16);
+
         uni[32] = this.canvas.width;
         uni[33] = this.canvas.height;
+
+        uni[34] = lightDir[0];
+        uni[35] = lightDir[1];
+        uni[36] = lightDir[2];
+        uni[38] = lightColor[0];
+        uni[39] = lightColor[1];
+        uni[40] = lightColor[2];
+        uni[41] = lightIntensity;
+
+        uni.set(shadowMat, 42);
+
+        uni[58] = sh.bias;
+        uni[59] = sh.normal_bias;
 
         this.device.queue.writeBuffer(
             loader.uniformBuffer,
             0,
             uni
         );
-
     }
+
 
 
     renderFrame() {

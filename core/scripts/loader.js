@@ -23,6 +23,12 @@ export class Loader {
 
         this.depthTexture = null;
         this.depthFormat = "depth24plus";
+
+        this.shadowMap = null;
+        this.shadowMapView = null;
+        this.shadowSampler = null;
+        this.shadowMapFormat = "depth32float";
+
     }
 
     async init() {
@@ -31,6 +37,10 @@ export class Loader {
 
         const voxelData = generateRoom(this.room_dimensions);
         this.createUniformBuffer();
+
+        const shadowRes = this.settings.LIGHTING.shadow_map.map_resolution;
+        this.createShadowMap(shadowRes);
+
 
         const mesh = this.buildVoxelMesh(voxelData);
         this.createMeshBuffers(mesh);
@@ -49,6 +59,22 @@ export class Loader {
             size: [width, height, 1],
             format: this.depthFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT
+        });
+    }
+
+    createShadowMap(resolution) {
+        this.shadowMap = this.device.createTexture({
+            size: [resolution, resolution, 1],
+            format: this.shadowMapFormat,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+        });
+
+        this.shadowMapView = this.shadowMap.createView();
+
+        this.shadowSampler = this.device.createSampler({
+            compare: "less",
+            magFilter: "linear",
+            minFilter: "linear"
         });
     }
 
@@ -83,37 +109,65 @@ export class Loader {
 
     createUniformBuffer() {
         this.uniformBuffer = this.device.createBuffer({
-            size: 36 * 4,
+            size: 256,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
     }
 
-
     createPipeline(vsh, fsh) {
         const device = this.device;
-
         const vModule = device.createShaderModule({ code: vsh });
         const fModule = device.createShaderModule({ code: fsh });
 
+        this.bindGroupLayout = device.createBindGroupLayout({
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                    buffer: { type: "uniform" }
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: { sampleType: "depth" }
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    sampler: { type: "comparison" }
+                }
+            ]
+        });
+
+        const pipelineLayout = device.createPipelineLayout({
+            bindGroupLayouts: [this.bindGroupLayout]
+        });
+
+
         this.pipeline = device.createRenderPipeline({
-            layout: "auto",
+            layout: pipelineLayout,
 
             vertex: {
                 module: vModule,
                 entryPoint: "vs_main",
-                buffers: [{
-                    arrayStride: 6 * 4,
-                    attributes: [
-                        { shaderLocation: 0, offset: 0,  format: "float32x3" },
-                        { shaderLocation: 1, offset: 12, format: "float32x3" }
-                    ]
-                }]
+                buffers: [
+                    {
+                        arrayStride: 9 * 4,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0,  format: "float32x3" },
+                            { shaderLocation: 1, offset: 12, format: "float32x3" },
+                            { shaderLocation: 2, offset: 24, format: "float32x3" }
+                        ]
+                    }
+                ]
             },
 
             fragment: {
                 module: fModule,
                 entryPoint: "fs_main",
-                targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
+                targets: [
+                    { format: navigator.gpu.getPreferredCanvasFormat() }
+                ]
             },
 
             primitive: {
@@ -129,14 +183,14 @@ export class Loader {
         });
 
         this.bindGroup = device.createBindGroup({
-            layout: this.pipeline.getBindGroupLayout(0),
-            entries: [{
-                binding: 0,
-                resource: { buffer: this.uniformBuffer }
-            }]
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.uniformBuffer } },
+                { binding: 1, resource: this.shadowMapView },
+                { binding: 2, resource: this.shadowSampler }
+            ]
         });
     }
-
 
 }
 
