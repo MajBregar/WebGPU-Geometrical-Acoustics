@@ -1,5 +1,5 @@
 import { VoxelMeshBuilder } from "./voxel_mesh_builder.js";
-import { generateRoom } from "./room_generation.js";
+import { generateRoom, hideWalls } from "./room_generation.js";
 
 export class Loader {
 
@@ -16,7 +16,7 @@ export class Loader {
         this.indexCount = 0;
 
         this.room_dimensions = settings.SIMULATION.room_dimensions;
-        
+        this.room_voxel_data = null;
 
         this.vertexShaderURL = "./core/shaders/render_room_vsh.wgsl";
         this.fragmentShaderURL = "./core/shaders/render_room_fsh.wgsl";
@@ -35,14 +35,13 @@ export class Loader {
         const vsh = await this.loadShader(this.vertexShaderURL);
         const fsh = await this.loadShader(this.fragmentShaderURL);
 
-        const voxelData = generateRoom(this.room_dimensions);
         this.createUniformBuffer();
 
         const shadowRes = this.settings.LIGHTING.shadow_map.map_resolution;
         this.createShadowMap(shadowRes);
 
-
-        const mesh = this.buildVoxelMesh(voxelData);
+        this.room_voxel_data = generateRoom(this.room_dimensions);
+        const mesh = this.makeVisualizationMesh();
         this.createMeshBuffers(mesh);
 
         this.createPipeline(vsh, fsh);
@@ -79,10 +78,17 @@ export class Loader {
     }
 
 
-    buildVoxelMesh(voxelData) {
-        const builder = new VoxelMeshBuilder(this.room_dimensions);
-        return builder.build(voxelData);
-    }
+     makeVisualizationMesh(){
+        const raw_voxel_data = this.room_voxel_data;
+        const hide_walls_flags = this.settings.SIMULATION.hide_walls;
+        const dimensions = this.room_dimensions;
+
+        const filtered_voxel_data = hideWalls(raw_voxel_data, hide_walls_flags, dimensions);
+
+        const builder = new VoxelMeshBuilder(dimensions);
+        return builder.build(filtered_voxel_data);
+     }
+
 
     createMeshBuffers(mesh) {
         const device = this.device;
@@ -190,6 +196,11 @@ export class Loader {
                 { binding: 2, resource: this.shadowSampler }
             ]
         });
+    }
+
+    reload(){
+        const mesh = this.makeVisualizationMesh();
+        this.createMeshBuffers(mesh);
     }
 
 }

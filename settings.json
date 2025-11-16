@@ -1,18 +1,25 @@
 {
 
     "SIMULATION" : {
-        "room_dimensions" : [128, 64, 128]
-
+        "room_dimensions" : [128, 64, 128],
+        "background_color" : [200, 200, 200, 255],
+        "hide_walls" : {
+            "top" : true,
+            "north" : false,
+            "south" : true,
+            "east" : false,
+            "west" : false
+        }
     },
 
     "LIGHTING": {
-        "direction": [ -0.4, -1.0, -0.3 ],
+        "direction": [ -0.95, -0.65, -1.73 ],
         "color": [ 1.0, 1.0, 1.0],
-        "intensity": 3.0,
+        "intensity": 1.6,
 
         "shadow_map": {
             "enabled": true,
-            "map_resolution": 2048,
+            "map_resolution": 1024,
             "bias": 0.0005,
             "normal_bias": 0.0015,
             "near": 1.0,
@@ -30,9 +37,9 @@
     "CONTROLS" : {
         "mouse_sensitivity": 0.004,
         "zoom_sensitivity": 0.05,
-        "start_yaw" : 0.5,
+        "start_yaw" : 1.4,
         "start_pitch" : 0.5,
-        "start_zoom" : 230,
+        "start_zoom" : 220,
         "min_zoom" : 0.5,
         "max_zoom" : 700
     }

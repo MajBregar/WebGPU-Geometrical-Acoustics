@@ -54,4 +54,65 @@ async function gameLoop() {
 
     requestAnimationFrame(gameLoop);
 }
+
+
+
+
+function setupDebugUI() {
+
+    const s1 = document.getElementById("slider1");
+    const s2 = document.getElementById("slider2");
+    const s3 = document.getElementById("slider3");
+
+    function updateSliders() {
+        const x = Number(s1.value);
+        const y = Number(s2.value);
+        const z = Number(s3.value);
+    }
+
+    s1.addEventListener("input", updateSliders);
+    s2.addEventListener("input", updateSliders);
+    s3.addEventListener("input", updateSliders);
+
+    updateSliders();
+
+    const c1 = document.getElementById("c1");
+    const c2 = document.getElementById("c2");
+    const c3 = document.getElementById("c3");
+    const c4 = document.getElementById("c4");
+    const c5 = document.getElementById("c5");
+
+    function updateCheckboxes() {
+        const new_hidden_walls = {
+            top: c3.checked,
+            north: c1.checked,
+            south: c5.checked,
+            east: c4.checked,
+            west: c2.checked
+        };
+
+        settings.SIMULATION.hide_walls = new_hidden_walls;
+        renderer.requestReload();
+    }
+
+    [c1, c2, c3, c4, c5].forEach(cb => {
+        cb.addEventListener("change", updateCheckboxes);
+    });
+
+    const hw = settings.SIMULATION.hide_walls;
+    c1.checked = hw.north;
+    c2.checked = hw.west;
+    c3.checked = hw.top;
+    c4.checked = hw.east;
+    c5.checked = hw.south;
+
+    const reloadButton = document.getElementById("reloadBtn");
+
+    reloadButton.addEventListener("click", () => {
+        renderer.requestReload();
+    });
+}
+
+
+setupDebugUI();
 gameLoop();

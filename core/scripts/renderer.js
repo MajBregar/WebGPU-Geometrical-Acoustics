@@ -14,6 +14,7 @@ export class Renderer {
         this.context = null;
         this.format = null;
         this.initialized = false;
+        this.reload = false;
 
         this.depthView = null;
         this.depthWidth = 0;
@@ -52,9 +53,12 @@ export class Renderer {
     updateUniforms() {
         const loader = this.loader;
         const settings = this.settings;
-        const room_dimensions = loader.room_dimensions;
         const ctrl = this.controller;
-        const aspect = this.canvas.width / this.canvas.height;
+        const dims = loader.room_dimensions;
+
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const aspect = w / h;
 
         const yaw   = ctrl.getYaw();
         const pitch = ctrl.getPitch();
@@ -67,9 +71,9 @@ export class Renderer {
         ];
 
         const target = [
-            room_dimensions[0] * 0.5,
-            room_dimensions[1] * 0.5,
-            room_dimensions[2] * 0.5
+            dims[0] * 0.5,
+            dims[1] * 0.5,
+            dims[2] * 0.5
         ];
 
         const up = [0, 1, 0];
@@ -104,33 +108,43 @@ export class Renderer {
         uni.set(viewProj, 0);
         uni.set(invViewProj, 16);
 
-        uni[32] = this.canvas.width;
-        uni[33] = this.canvas.height;
+        uni[32] = w;
+        uni[33] = h;
 
-        uni[34] = lightDir[0];
-        uni[35] = lightDir[1];
-        uni[36] = lightDir[2];
-        uni[38] = lightColor[0];
-        uni[39] = lightColor[1];
-        uni[40] = lightColor[2];
-        uni[41] = lightIntensity;
+        uni[36] = lightDir[0];
+        uni[37] = lightDir[1];
+        uni[38] = lightDir[2];
 
-        uni.set(shadowMat, 42);
 
-        uni[58] = sh.bias;
-        uni[59] = sh.normal_bias;
+        uni[40] = lightColor[0];
+        uni[41] = lightColor[1];
+        uni[42] = lightColor[2];
 
-        this.device.queue.writeBuffer(
-            loader.uniformBuffer,
-            0,
-            uni
-        );
+        uni[43] = lightIntensity;
+
+        uni.set(shadowMat, 44);
+
+        uni[60] = sh.bias;
+        uni[61] = sh.normal_bias;
+
+        this.device.queue.writeBuffer(loader.uniformBuffer, 0, uni);
     }
 
+    requestReload(){
+        this.reload = true;
+    }
 
+    handleReload(){
+        this.loader.reload();
+        this.reload = false;
+    }
 
     renderFrame() {
         if (!this.initialized) return;
+
+        if (this.reload) {
+            this.handleReload();
+        }
 
         const loader = this.loader;
 
@@ -157,12 +171,15 @@ export class Renderer {
         this.updateUniforms();
         const device = this.device;
         const encoder = device.createCommandEncoder();
+        
+        const bgc = this.settings.SIMULATION.background_color;
+        const background_color = [bgc[0] / 255, bgc[1] / 255, bgc[2] / 255, bgc[3] / 255];
 
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
                 view: this.context.getCurrentTexture().createView(),
                 loadOp: "clear",
-                clearValue: { r: 1, g: 1, b: 1, a: 1 },
+                clearValue: { r: background_color[0], g: background_color[1], b: background_color[2], a: background_color[3] },
                 storeOp: "store"
             }],
 

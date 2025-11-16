@@ -36,7 +36,7 @@ fn fs_main(input : FSInput) -> @location(0) vec4<f32> {
 
     let diffuse = max(dot(N, L), 0.0);
 
-    let litColor = input.color * diffuse;
+    let litColor = uni.lightIntensity * input.color * diffuse;
     
     return vec4<f32>(litColor, 1.0);
 }

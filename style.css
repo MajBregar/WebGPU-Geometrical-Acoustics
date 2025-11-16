@@ -3,7 +3,7 @@ html, body {
     padding: 0;
     height: 100%;
     width: 100%;
-    background: #111;          /* dark outer background */
+    background: #ffffff;          /* dark outer background */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -11,10 +11,10 @@ html, body {
 }
 
 #gfx {
-    width: 90vw;
-    height: 90vh;
+    width: 60vw;
+    height: 60vh;
     display: block;
-    background: #fff;
+    background: #b4b4b4;
 }
 
 #fps {
@@ -29,4 +29,45 @@ html, body {
     border-radius: 4px;
     user-select: none;
     pointer-events: none;
+}
+
+
+#sliderPanel {
+    position: absolute;
+    top: 10px;
+    right: 10px;   /* ← moved from left to right */
+    padding: 12px;
+    background: rgba(30, 30, 30, 0.85);
+    border-radius: 6px;
+    color: white;
+    font-family: sans-serif;
+    width: 200px;
+}
+
+
+#sliderPanel label {
+    display: block;
+    margin-top: 6px;
+    margin-bottom: 2px;
+    font-size: 13px;
+}
+
+#sliderPanel input[type="range"] {
+    width: 100%;
+}
+
+#hideWallsGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 24px);
+    grid-template-rows: repeat(3, 24px);
+    justify-content: center;
+    gap: 4px; /* spacing between boxes */
+    margin-top: 8px;
+}
+
+#hideWallsGrid input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
 }
