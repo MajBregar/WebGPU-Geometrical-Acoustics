@@ -84,7 +84,7 @@ export class VoxelMeshBuilder {
                 return vertexMap.get(key);
             }
 
-            const index = vertices.length / 9; // 9 floats per vertex
+            const index = vertices.length / 9;
             vertices.push(
                 px, py, pz,
                 nx, ny, nz,

@@ -9,8 +9,8 @@ struct Uniforms {
     shadowMatrix    : mat4x4<f32>,
     shadowBias      : f32,
     shadowNormalBias: f32,
+    ambientLight    : f32,
 };
-
 
 @group(0) @binding(0)
 var<uniform> uni : Uniforms;
@@ -44,7 +44,9 @@ fn vs_main(input : VSInput) -> VSOutput {
     out.position = uni.viewProj * worldPos;
     out.normal = input.normal;
     out.color = input.color;
-    out.shadowPos = uni.shadowMatrix * worldPos;
 
+    let shadowWorldPos = vec4<f32>(input.position + input.normal * uni.shadowNormalBias, 1.0);
+    out.shadowPos = uni.shadowMatrix * shadowWorldPos;
+    
     return out;
 }

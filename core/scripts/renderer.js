@@ -1,7 +1,12 @@
 
-import { mulMat4, invertMat4, normalize3, length3 } from "./math.js";
-import { lookAt, perspective, ortographic } from "./matrix_helpers.js";
-import {mat4} from "./glm.js"
+import { lookAt, perspective, ortographic, matMul, normalize3 } from "./matrix_helpers.js";
+import { mat4, vec3 } from "./glm.js"
+
+function type_mat4(v)  { return { kind:"mat4",  value:v }; }
+function type_vec2(v)  { return { kind:"vec2",  value:v }; }
+function type_vec3(v)  { return { kind:"vec3",  value:v }; }
+function type_float(v) { return { kind:"float", value: [v] }; }
+
 
 export class Renderer {
 
@@ -86,71 +91,45 @@ export class Renderer {
             settings.CAMERA.near,
             settings.CAMERA.far
         );
-
-        const viewProj = mulMat4(proj, view);
-        const invViewProj = invertMat4(viewProj);
+        const viewProj = matMul(proj, view);
+        const invViewProj = mat4.create();
 
         const light = settings.LIGHTING;
-        const sh = light.shadow_map;
+        const smap = light.shadow_map;
 
-        const lightDir = light.direction;
+        const lightDir =  normalize3(light.direction);
         const lightColor = light.color;
         const lightIntensity = light.intensity;
 
-
-        const uni = new Float32Array(64);
-
-        uni.set(viewProj, 0);
-        uni.set(invViewProj, 16);
-
-        uni[32] = w;
-        uni[33] = h;
-
-        uni[36] = lightDir[0];
-        uni[37] = lightDir[1];
-        uni[38] = lightDir[2];
-
-
-        uni[40] = lightColor[0];
-        uni[41] = lightColor[1];
-        uni[42] = lightColor[2];
-
-        uni[43] = lightIntensity;
-
-
-
-
-        
-        const lightDirNorm = normalize3(settings.LIGHTING.direction);
-        
-        const lightDistance = 1500;
         const lightPos = [
-            dims[0] * 0.5 - lightDirNorm[0] * lightDistance,
-            dims[1] * 0.5 - lightDirNorm[1] * lightDistance,
-            dims[2] * 0.5 - lightDirNorm[2] * lightDistance
+            dims[0] * 0.5 - lightDir[0] * smap.distance,
+            dims[1] * 0.5 - lightDir[1] * smap.distance,
+            dims[2] * 0.5 - lightDir[2] * smap.distance
         ];
 
-        const center = [
-            dims[0] * 0.5,
-            dims[1] * 0.5,
-            dims[2] * 0.5
-        ];
+        const light_view = lookAt(lightPos, target, up);
+        const light_proj = ortographic(smap.half, smap.near, smap.far);
+        const light_mat = matMul(light_proj, light_view);
 
-        const light_view = mat4.lookAt(mat4.create(), lightPos, center, [0,1,0]);
-        const half = 500;
-        const light_proj = mat4.orthoZO(mat4.create(), -half, half, -half, half, 1, 4000);
-        const light_mat = mat4.multiply(mat4.create(), light_proj, light_view);
+        const uniforms = {
+            viewProj: type_mat4(viewProj),
+            invViewProj: type_mat4(invViewProj),
+            screenSize: type_vec2([w, h]),
+            lightDir: type_vec3(lightDir),
+            lightColor: type_vec3(lightColor),
+            lightIntensity: type_float(lightIntensity),
+            shadowMatrix: type_mat4(light_mat),
+            shadowBias: type_float(smap.bias),
+            shadowNormalBias: type_float(smap.normal_bias),
+            ambientLight: type_float(light.ambient_light)
+        };
 
-
-
-
-        uni.set(light_mat, 44);
-
-        uni[60] = sh.bias;
-        uni[61] = sh.normal_bias;
-
-        this.device.queue.writeBuffer(loader.uniformBuffer, 0, uni);
-        this.device.queue.writeBuffer(loader.shadowUniformBuffer, 0, light_mat);
+        const shadow_uniforms = {
+            shadowMatrix: type_mat4(light_mat)
+        };
+        
+        loader.packBuffer(loader.uniformBuffer, loader.uniformBufferSize, uniforms);
+        loader.packBuffer(loader.shadowUniformBuffer, loader.shadowUniformBufferSize, shadow_uniforms);
 
     }
 
@@ -200,7 +179,6 @@ export class Renderer {
         // PASS 1: SHADOW MAP RENDERING
         // ----------------------------------------------------
         
-        
         const shadowPass = encoder.beginRenderPass({
             colorAttachments: [],
             depthStencilAttachment: {
@@ -211,7 +189,6 @@ export class Renderer {
             }
         });
 
-
         shadowPass.setPipeline(loader.shadowPipeline);
         shadowPass.setBindGroup(0, loader.shadowBindGroup);
         shadowPass.setVertexBuffer(0, loader.vertexBuffer);
@@ -219,9 +196,6 @@ export class Renderer {
         shadowPass.drawIndexed(loader.indexCount);
         shadowPass.end();
         
-
-
-    
         // ----------------------------------------------------
         // PASS 2: MAIN FORWARD RENDERING
         // ----------------------------------------------------

@@ -9,8 +9,11 @@ export class Loader {
 
         this.pipeline = null;
         this.bindGroup = null;
+
         this.uniformBuffer = null;
+        this.uniformBufferSize = 64 * 4;
         this.shadowUniformBuffer = null;
+        this.shadowUniformBufferSize = 16 * 4;
 
         this.vertexBuffer = null;
         this.indexBuffer = null;
@@ -36,7 +39,6 @@ export class Loader {
     async init() {
         const main_vsh = await this.loadShader(this.vertexShaderURL);
         const main_fsh = await this.loadShader(this.fragmentShaderURL);
-
         const shadow_vsh = await this.loadShader(this.shadowVertexShaderURL);
 
         this.createUniformBuffer();
@@ -71,7 +73,7 @@ export class Loader {
     createShadowMap(resolution) {
         this.shadowMap = this.device.createTexture({
             size: [resolution, resolution, 1],
-            format: "depth32float",
+            format: this.shadowMapFormat,
             usage:
                 GPUTextureUsage.RENDER_ATTACHMENT |
                 GPUTextureUsage.TEXTURE_BINDING |
@@ -87,8 +89,55 @@ export class Loader {
             minFilter: "linear",
             type: "comparison"
         });
+    }
 
 
+    packBuffer(gpuBuffer, byteSize, struct) {
+        const buffer = new Float32Array(byteSize / 4);
+        const alignment = 4;
+        const sizes = {
+            float: 1,
+            vec2: 2,
+            vec3: 3,
+            mat4: 16,
+        };
+
+        let insert_pos = 0;
+        let next_align = alignment;
+
+        function insert_value(type, value){
+            const s = sizes[type];
+            //console.log("INS POS:", insert_pos, "NEXT ALIGN:", next_align, "TYPE:", type, "SIZE:", s, "VALUE: ", value);
+
+            if (insert_pos + s <= next_align) {
+                //console.log("insert_pos + s <= next_align: INSERTING AT", insert_pos);
+                buffer.set(value, insert_pos);
+                insert_pos += s;
+                if (insert_pos == next_align) next_align += alignment;
+            } else {
+                //console.log("insert_pos + s > next_align");
+                insert_pos = insert_pos + ((alignment - (insert_pos % alignment)) % alignment)
+                //console.log("inserting at", insert_pos);
+                buffer.set(value, insert_pos);
+                insert_pos += s;
+                next_align = insert_pos + ((alignment - (insert_pos % alignment)) % alignment)
+
+            }
+        }
+
+
+        for (const key of Object.keys(struct)) {
+            const field = struct[key];
+            const type = field.kind;
+            const val = field.value;
+            insert_value(type, val);
+            
+            
+        }
+
+        //console.log("OUTPUT", buffer);
+        
+        this.device.queue.writeBuffer(gpuBuffer, 0, buffer);
     }
 
 
@@ -131,14 +180,14 @@ export class Loader {
 
     createUniformBuffer() {
         this.uniformBuffer = this.device.createBuffer({
-            size: 256,
+            size: this.uniformBufferSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
     }
 
     createShadowUniformBuffer() {
         this.shadowUniformBuffer = this.device.createBuffer({
-            size: 256,
+            size: this.shadowUniformBufferSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
     }
