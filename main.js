@@ -68,6 +68,8 @@ function setupDebugUI() {
         const x = Number(s1.value);
         const y = Number(s2.value);
         const z = Number(s3.value);
+
+        //settings.LIGHTING.direction = [x, y, z];
     }
 
     s1.addEventListener("input", updateSliders);

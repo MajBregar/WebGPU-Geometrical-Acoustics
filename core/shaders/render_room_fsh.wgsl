@@ -20,16 +20,30 @@ var shadowMap : texture_depth_2d;
 var shadowSampler : sampler_comparison;
 
 struct FSInput {
-    @location(0) normal : vec3<f32>,
-    @location(1) color  : vec3<f32>
+    @location(0) normal    : vec3<f32>,
+    @location(1) color     : vec3<f32>,
+    @location(2) shadowPos : vec4<f32>
 };
 
 @fragment
 fn fs_main(input : FSInput) -> @location(0) vec4<f32> {
 
-    //dummy data
-    let uv = vec2<f32>(0.0, 0.0);
-    let _depthSample = textureSampleCompare(shadowMap, shadowSampler, uv, 0.0);
+
+    let shadow_ndc  = input.shadowPos.xyz / input.shadowPos.w;
+    let shadow_uv = vec2(
+        shadow_ndc.x * 0.5 + 0.5,
+        -(shadow_ndc.y * 0.5 + 0.5) + 1.0
+    );
+    let shadow_depth= shadow_ndc.z;
+
+    let shadow = textureSampleCompare(
+        shadowMap,
+        shadowSampler,
+        shadow_uv,
+        shadow_depth
+    );
+
+
 
     let N = normalize(input.normal);
     let L = normalize(-uni.lightDir);
@@ -38,5 +52,5 @@ fn fs_main(input : FSInput) -> @location(0) vec4<f32> {
 
     let litColor = uni.lightIntensity * input.color * diffuse;
     
-    return vec4<f32>(litColor, 1.0);
+    return vec4<f32>(vec3(shadow), 1.0);
 }

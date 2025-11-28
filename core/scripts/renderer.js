@@ -1,6 +1,7 @@
 
-import { mulMat4, invertMat4 } from "./math.js";
-import { lookAt, perspective } from "./matrix_helpers.js";
+import { mulMat4, invertMat4, normalize3, length3 } from "./math.js";
+import { lookAt, perspective, ortographic } from "./matrix_helpers.js";
+import {mat4} from "./glm.js"
 
 export class Renderer {
 
@@ -96,12 +97,6 @@ export class Renderer {
         const lightColor = light.color;
         const lightIntensity = light.intensity;
 
-        const shadowMat = new Float32Array([
-            1,0,0,0,
-            0,1,0,0,
-            0,0,1,0,
-            0,0,0,1
-        ]);
 
         const uni = new Float32Array(64);
 
@@ -122,12 +117,41 @@ export class Renderer {
 
         uni[43] = lightIntensity;
 
-        uni.set(shadowMat, 44);
+
+
+
+        
+        const lightDirNorm = normalize3(settings.LIGHTING.direction);
+        
+        const lightDistance = 1500;
+        const lightPos = [
+            dims[0] * 0.5 - lightDirNorm[0] * lightDistance,
+            dims[1] * 0.5 - lightDirNorm[1] * lightDistance,
+            dims[2] * 0.5 - lightDirNorm[2] * lightDistance
+        ];
+
+        const center = [
+            dims[0] * 0.5,
+            dims[1] * 0.5,
+            dims[2] * 0.5
+        ];
+
+        const light_view = mat4.lookAt(mat4.create(), lightPos, center, [0,1,0]);
+        const half = 500;
+        const light_proj = mat4.orthoZO(mat4.create(), -half, half, -half, half, 1, 4000);
+        const light_mat = mat4.multiply(mat4.create(), light_proj, light_view);
+
+
+
+
+        uni.set(light_mat, 44);
 
         uni[60] = sh.bias;
         uni[61] = sh.normal_bias;
 
         this.device.queue.writeBuffer(loader.uniformBuffer, 0, uni);
+        this.device.queue.writeBuffer(loader.shadowUniformBuffer, 0, light_mat);
+
     }
 
     requestReload(){
@@ -157,7 +181,6 @@ export class Renderer {
             return;
         }
 
-        
         const w = this.canvas.clientWidth;
         const h = this.canvas.clientHeight;
 
@@ -167,19 +190,60 @@ export class Renderer {
             this.resizeDepthTexture();
         }
 
-        
         this.updateUniforms();
+
         const device = this.device;
         const encoder = device.createCommandEncoder();
+
+        
+        // ----------------------------------------------------
+        // PASS 1: SHADOW MAP RENDERING
+        // ----------------------------------------------------
+        
+        
+        const shadowPass = encoder.beginRenderPass({
+            colorAttachments: [],
+            depthStencilAttachment: {
+                view: loader.shadowMapView,
+                depthLoadOp: "clear",
+                depthClearValue: 1.0,
+                depthStoreOp: "store"
+            }
+        });
+
+
+        shadowPass.setPipeline(loader.shadowPipeline);
+        shadowPass.setBindGroup(0, loader.shadowBindGroup);
+        shadowPass.setVertexBuffer(0, loader.vertexBuffer);
+        shadowPass.setIndexBuffer(loader.indexBuffer, "uint32");
+        shadowPass.drawIndexed(loader.indexCount);
+        shadowPass.end();
+        
+
+
+    
+        // ----------------------------------------------------
+        // PASS 2: MAIN FORWARD RENDERING
+        // ----------------------------------------------------
         
         const bgc = this.settings.SIMULATION.background_color;
-        const background_color = [bgc[0] / 255, bgc[1] / 255, bgc[2] / 255, bgc[3] / 255];
+        const background_color = [
+            bgc[0] / 255,
+            bgc[1] / 255,
+            bgc[2] / 255,
+            bgc[3] / 255
+        ];
 
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
                 view: this.context.getCurrentTexture().createView(),
                 loadOp: "clear",
-                clearValue: { r: background_color[0], g: background_color[1], b: background_color[2], a: background_color[3] },
+                clearValue: {
+                    r: background_color[0],
+                    g: background_color[1],
+                    b: background_color[2],
+                    a: background_color[3]
+                },
                 storeOp: "store"
             }],
 
@@ -195,10 +259,10 @@ export class Renderer {
         pass.setBindGroup(0, loader.bindGroup);
         pass.setVertexBuffer(0, loader.vertexBuffer);
         pass.setIndexBuffer(loader.indexBuffer, "uint32");
-
         pass.drawIndexed(loader.indexCount);
-
         pass.end();
+
         device.queue.submit([encoder.finish()]);
     }
+
 }

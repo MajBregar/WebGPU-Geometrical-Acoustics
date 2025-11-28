@@ -31,7 +31,8 @@ struct VSInput {
 struct VSOutput {
     @builtin(position) position : vec4<f32>,
     @location(0) normal : vec3<f32>,
-    @location(1) color  : vec3<f32>
+    @location(1) color  : vec3<f32>,
+    @location(2) shadowPos : vec4<f32>
 };
 
 @vertex
@@ -43,6 +44,7 @@ fn vs_main(input : VSInput) -> VSOutput {
     out.position = uni.viewProj * worldPos;
     out.normal = input.normal;
     out.color = input.color;
-    
+    out.shadowPos = uni.shadowMatrix * worldPos;
+
     return out;
 }

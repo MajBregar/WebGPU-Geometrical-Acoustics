@@ -10,6 +10,7 @@ export class Loader {
         this.pipeline = null;
         this.bindGroup = null;
         this.uniformBuffer = null;
+        this.shadowUniformBuffer = null;
 
         this.vertexBuffer = null;
         this.indexBuffer = null;
@@ -20,9 +21,10 @@ export class Loader {
 
         this.vertexShaderURL = "./core/shaders/render_room_vsh.wgsl";
         this.fragmentShaderURL = "./core/shaders/render_room_fsh.wgsl";
+        this.shadowVertexShaderURL = "./core/shaders/shadow_vsh.wgsl";
 
         this.depthTexture = null;
-        this.depthFormat = "depth24plus";
+        this.depthFormat = "depth32float";
 
         this.shadowMap = null;
         this.shadowMapView = null;
@@ -32,10 +34,13 @@ export class Loader {
     }
 
     async init() {
-        const vsh = await this.loadShader(this.vertexShaderURL);
-        const fsh = await this.loadShader(this.fragmentShaderURL);
+        const main_vsh = await this.loadShader(this.vertexShaderURL);
+        const main_fsh = await this.loadShader(this.fragmentShaderURL);
+
+        const shadow_vsh = await this.loadShader(this.shadowVertexShaderURL);
 
         this.createUniformBuffer();
+        this.createShadowUniformBuffer();
 
         const shadowRes = this.settings.LIGHTING.shadow_map.map_resolution;
         this.createShadowMap(shadowRes);
@@ -44,7 +49,9 @@ export class Loader {
         const mesh = this.makeVisualizationMesh();
         this.createMeshBuffers(mesh);
 
-        this.createPipeline(vsh, fsh);
+        this.createMainPipeline(main_vsh, main_fsh);
+        this.createShadowPipeline(shadow_vsh);
+
     }
 
 
@@ -64,18 +71,27 @@ export class Loader {
     createShadowMap(resolution) {
         this.shadowMap = this.device.createTexture({
             size: [resolution, resolution, 1],
-            format: this.shadowMapFormat,
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+            format: "depth32float",
+            usage:
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_SRC
         });
+
 
         this.shadowMapView = this.shadowMap.createView();
 
         this.shadowSampler = this.device.createSampler({
             compare: "less",
             magFilter: "linear",
-            minFilter: "linear"
+            minFilter: "linear",
+            type: "comparison"
         });
+
+
     }
+
+
 
 
      makeVisualizationMesh(){
@@ -120,7 +136,17 @@ export class Loader {
         });
     }
 
-    createPipeline(vsh, fsh) {
+    createShadowUniformBuffer() {
+        this.shadowUniformBuffer = this.device.createBuffer({
+            size: 256,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+    }
+
+
+
+
+    createMainPipeline(vsh, fsh) {
         const device = this.device;
         const vModule = device.createShaderModule({ code: vsh });
         const fModule = device.createShaderModule({ code: fsh });
@@ -197,6 +223,64 @@ export class Loader {
             ]
         });
     }
+
+    createShadowPipeline(vsh) {
+        const device = this.device;
+        const vModule = device.createShaderModule({ code: vsh });
+
+        this.shadowBindGroupLayout = device.createBindGroupLayout({
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: { type: "uniform" }
+                }
+            ]
+        });
+
+        const pipelineLayout = device.createPipelineLayout({
+            bindGroupLayouts: [this.shadowBindGroupLayout]
+        });
+
+        this.shadowPipeline = device.createRenderPipeline({
+            layout: pipelineLayout,
+
+            vertex: {
+                module: vModule,
+                entryPoint: "vs_shadow_main",
+                buffers: [
+                    {
+                        arrayStride: 9 * 4,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0,  format: "float32x3" },
+                            { shaderLocation: 1, offset: 12, format: "float32x3" },
+                            { shaderLocation: 2, offset: 24, format: "float32x3" }
+                        ]
+                    }
+                ]
+            },
+
+            primitive: {
+                topology: "triangle-list",
+                cullMode: "none"
+            },
+
+            depthStencil: {
+                format: this.shadowMapFormat,
+                depthWriteEnabled: true,
+                depthCompare: "less"
+            }
+        });
+
+        this.shadowBindGroup = device.createBindGroup({
+            layout: this.shadowBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.shadowUniformBuffer } }
+            ]
+        });
+    }
+
+
 
     reload(){
         const mesh = this.makeVisualizationMesh();
