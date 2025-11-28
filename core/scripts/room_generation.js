@@ -1,12 +1,4 @@
-const RoomBlock = Object.freeze({
-  SOURCE: Object.freeze({
-    rgba: [242, 10, 149, 255],
-    physical_properties: []
-  }),
-  LISTENER: Object.freeze({
-    rgba: [219, 99, 24, 255],
-    physical_properties: []
-  }),
+export const RoomBlock = Object.freeze({
   AIR: Object.freeze({
     rgba: [255, 255, 255, 0],
     physical_properties: []
@@ -16,6 +8,12 @@ const RoomBlock = Object.freeze({
     physical_properties: []
   })
 });
+
+export const MATERIAL_COEFFICIENTS = {
+  AIR:   0.0,
+  WALL:  0.3
+};
+
 
 function setVoxelCell(voxedArray, cellID, type) {
   voxedArray[cellID + 0] = type.rgba[0];

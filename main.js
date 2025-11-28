@@ -48,7 +48,7 @@ async function gameLoop() {
     if (running) {
         const start = performance.now();
 
-        renderer.renderFrame();
+        await renderer.renderFrame();
         updateGPUFPS(start);
     }
 
@@ -72,11 +72,9 @@ function setupDebugUI() {
         //settings.LIGHTING.direction = [x, y, z];
         //settings.LIGHTING.shadow_map.normal_bias = x;
         //settings.LIGHTING.shadow_map.bias = y;
+        //settings.LIGHTING.ambient_light = x;
+        //settings.LIGHTING.intensity = y;
 
-        settings.LIGHTING.ambient_light = x;
-        settings.LIGHTING.intensity = y;
-
-        
     }
 
     s1.addEventListener("input", updateSliders);

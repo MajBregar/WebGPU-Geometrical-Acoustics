@@ -9,14 +9,17 @@
             "south" : true,
             "east" : false,
             "west" : false
-        }
+        },
+
+        "ray_count" : 1024
+
     },
 
     "LIGHTING": {
         "direction": [ -0.95, -0.65, -1.73 ],
         "color": [ 1.0, 1.0, 1.0],
-        "intensity": 1.6,
-        "ambient_light" : 0.0,
+        "intensity": 1.15,
+        "ambient_light" : 0.37,
 
         "shadow_map": {
             "map_resolution": 2048,
@@ -40,7 +43,7 @@
         "zoom_sensitivity": 0.05,
         "start_yaw" : 1.4,
         "start_pitch" : 0.5,
-        "start_zoom" : 220,
+        "start_zoom" : 120,
         "min_zoom" : 0.5,
         "max_zoom" : 700
     }

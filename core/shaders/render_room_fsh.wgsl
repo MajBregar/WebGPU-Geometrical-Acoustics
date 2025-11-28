@@ -32,7 +32,7 @@ fn fs_main(input : FSInput) -> @location(0) vec4<f32> {
     let shadow_ndc  = input.shadowPos.xyz / input.shadowPos.w;
     let shadow_uv = vec2(
         shadow_ndc.x * 0.5 + 0.5,
-        -(shadow_ndc.y * 0.5 + 0.5) + 1.0
+        1.0 - (shadow_ndc.y * 0.5 + 0.5) 
     );
 
     let compare_depth= shadow_ndc.z - uni.shadowBias;
@@ -46,8 +46,7 @@ fn fs_main(input : FSInput) -> @location(0) vec4<f32> {
     let N = normalize(input.normal);
     let L = normalize(-uni.lightDir);
     let diffuse = max(dot(N, L), 0.0);
-    let litColor = uni.lightIntensity * uni.lightColor * input.color * clamp(diffuse * shadow + uni.ambientLight, 0.0, 1.0);
-    //maybe here make intensity choose between no lighting and heavy lighting?
+    let litColor = uni.lightIntensity * uni.lightColor * input.color * clamp(min(diffuse, shadow) + uni.ambientLight, 0.0, 1.0);
 
     return vec4<f32>(litColor, 1.0);
 }

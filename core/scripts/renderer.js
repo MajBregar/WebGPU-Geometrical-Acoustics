@@ -70,19 +70,17 @@ export class Renderer {
         const pitch = ctrl.getPitch();
         const dist  = ctrl.getZoom();
 
-        const camera_pos = [
-            Math.cos(pitch) * Math.cos(yaw) * dist,
-            Math.sin(pitch) * dist,
-            Math.cos(pitch) * Math.sin(yaw) * dist
-        ];
-
+        const up = [0, 1, 0];
         const target = [
             dims[0] * 0.5,
             dims[1] * 0.5,
             dims[2] * 0.5
         ];
-
-        const up = [0, 1, 0];
+        const camera_pos = [
+            target[0] + Math.cos(pitch) * Math.cos(yaw) * dist,
+            target[1] + Math.sin(pitch) * dist,
+            target[2] + Math.cos(pitch) * Math.sin(yaw) * dist
+        ];
 
         const view = lookAt(camera_pos, target, up);
         const proj = perspective(
@@ -131,6 +129,21 @@ export class Renderer {
         loader.packBuffer(loader.uniformBuffer, loader.uniformBufferSize, uniforms);
         loader.packBuffer(loader.shadowUniformBuffer, loader.shadowUniformBufferSize, shadow_uniforms);
 
+
+        const arrayBuffer = new ArrayBuffer(loader.rayComputeUniformBufferSize);
+        const u32 = new Uint32Array(arrayBuffer);
+        const f32 = new Float32Array(arrayBuffer);
+
+        u32[0] = dims[0];
+        u32[1] = dims[1];
+        u32[2] = dims[2];
+        u32[3] = 100;
+
+        f32[4] = 0.5;
+        u32[5] = loader.rayCount;
+        f32[6] = 0.01;
+        f32[7] = 0.0;
+        this.device.queue.writeBuffer(loader.rayComputeUniformBuffer, 0, arrayBuffer);
     }
 
     requestReload(){
@@ -142,7 +155,7 @@ export class Renderer {
         this.reload = false;
     }
 
-    renderFrame() {
+    async renderFrame() {
         if (!this.initialized) return;
 
         if (this.reload) {
@@ -151,14 +164,7 @@ export class Renderer {
 
         const loader = this.loader;
 
-        if (!loader.pipeline ||
-            !loader.bindGroup ||
-            !loader.vertexBuffer ||
-            !loader.indexBuffer ||
-            loader.indexCount === 0)
-        {
-            return;
-        }
+        if (!loader.validPipelines()) return;
 
         const w = this.canvas.clientWidth;
         const h = this.canvas.clientHeight;
@@ -169,17 +175,56 @@ export class Renderer {
             this.resizeDepthTexture();
         }
 
+        const device = this.device;
         this.updateUniforms();
 
-        const device = this.device;
+        // ----------------------------------------------------
+        // PASS 0: SOUND RAY COMPUTE SHADER
+        // ----------------------------------------------------
         const encoder = device.createCommandEncoder();
 
+        device.queue.writeBuffer(
+            loader.statsBuffer,
+            0,
+            loader.emptyStatsCPU
+        );
+
+
+        const computePass = encoder.beginComputePass();
+        computePass.setPipeline(loader.rayPipeline);
+        computePass.setBindGroup(0, loader.rayBindGroup);
+        const workgroups = Math.ceil(loader.rayCount / 64);
+        computePass.dispatchWorkgroups(workgroups);
+        computePass.end();
         
-        // ----------------------------------------------------
-        // PASS 1: SHADOW MAP RENDERING
-        // ----------------------------------------------------
+        encoder.copyBufferToBuffer(
+            loader.statsBuffer,
+            0,
+            loader.statsReadbackBuffer,
+            0,
+            loader.statsByteSize
+        );
+
+        device.queue.submit([encoder.finish()]);
+
+        const test = await loader.readFaceStats();
         
-        const shadowPass = encoder.beginRenderPass({
+        let sum = 0;
+        test.forEach(e => {
+            const absorbedEnergy = e.absorbedEnergy;
+            const bounceCount = e.bounceCount;
+            sum += bounceCount;
+        });
+        console.log(sum);
+
+
+        // ----------------------------------------------------
+        // PASS 1: SHADOW MAP
+        // ----------------------------------------------------
+
+        const encoder2 = device.createCommandEncoder();
+
+        const shadowPass = encoder2.beginRenderPass({
             colorAttachments: [],
             depthStencilAttachment: {
                 view: loader.shadowMapView,
@@ -195,11 +240,11 @@ export class Renderer {
         shadowPass.setIndexBuffer(loader.indexBuffer, "uint32");
         shadowPass.drawIndexed(loader.indexCount);
         shadowPass.end();
-        
+
         // ----------------------------------------------------
         // PASS 2: MAIN FORWARD RENDERING
         // ----------------------------------------------------
-        
+
         const bgc = this.settings.SIMULATION.background_color;
         const background_color = [
             bgc[0] / 255,
@@ -208,7 +253,7 @@ export class Renderer {
             bgc[3] / 255
         ];
 
-        const pass = encoder.beginRenderPass({
+        const pass = encoder2.beginRenderPass({
             colorAttachments: [{
                 view: this.context.getCurrentTexture().createView(),
                 loadOp: "clear",
@@ -220,7 +265,6 @@ export class Renderer {
                 },
                 storeOp: "store"
             }],
-
             depthStencilAttachment: {
                 view: this.depthView,
                 depthLoadOp: "clear",
@@ -236,7 +280,8 @@ export class Renderer {
         pass.drawIndexed(loader.indexCount);
         pass.end();
 
-        device.queue.submit([encoder.finish()]);
+        device.queue.submit([encoder2.finish()]);
     }
+
 
 }
