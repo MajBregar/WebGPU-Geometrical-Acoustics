@@ -1,8 +1,8 @@
 struct Ray {
     origin : vec3<f32>,
-    dir    : vec3<f32>,
     energy : f32,
-    ray_active : u32,
+    dir    : vec3<f32>,
+    bounces_left : u32
 };
 
 struct FaceStats {
@@ -43,7 +43,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let ray = &rays[ray_id];
 
     //let flatFaceIndex = solidVoxelIndex * 6u + faceID;
-    atomicStore(&stats[ray_id].bounceCount, 1u);
+    atomicStore(&stats[ray_id].bounceCount, ray.bounces_left);
     atomicStore(&stats[ray_id].absorbedEnergy, 10u);
 
 }

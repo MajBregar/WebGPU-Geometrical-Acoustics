@@ -6,6 +6,9 @@ function type_mat4(v)  { return { kind:"mat4",  value:v }; }
 function type_vec2(v)  { return { kind:"vec2",  value:v }; }
 function type_vec3(v)  { return { kind:"vec3",  value:v }; }
 function type_float(v) { return { kind:"float", value: [v] }; }
+function type_u32(v) { return { kind:"u32", value: [v] }; }
+function type_uvec3(v)  { return { kind:"uvec3",  value:v }; }
+
 
 
 export class Renderer {
@@ -129,22 +132,53 @@ export class Renderer {
         loader.packBuffer(loader.uniformBuffer, loader.uniformBufferSize, uniforms);
         loader.packBuffer(loader.shadowUniformBuffer, loader.shadowUniformBufferSize, shadow_uniforms);
 
+        const sim = settings.SIMULATION;
+        const ray_uniforms = {
+            room_dims : type_uvec3(sim.room_dimensions),
+            max_bounce : type_u32(sim.max_bounces),
+            voxel_size_meters : type_float(sim.voxel_scale_meters),
+            ray_count : type_u32(sim.ray_count),
+            energy_cutoff : type_float(sim.ray_energy_min)
+        }
 
-        const arrayBuffer = new ArrayBuffer(loader.rayComputeUniformBufferSize);
-        const u32 = new Uint32Array(arrayBuffer);
-        const f32 = new Float32Array(arrayBuffer);
-
-        u32[0] = dims[0];
-        u32[1] = dims[1];
-        u32[2] = dims[2];
-        u32[3] = 100;
-
-        f32[4] = 0.5;
-        u32[5] = loader.rayCount;
-        f32[6] = 0.01;
-        f32[7] = 0.0;
-        this.device.queue.writeBuffer(loader.rayComputeUniformBuffer, 0, arrayBuffer);
+        loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
     }
+
+    generateRayBufferData() {
+        const sim = this.settings.SIMULATION;
+        const loader = this.loader;
+
+        const N          = sim.ray_count;
+        const ray_origin = sim.emitter_position;
+        const energy     = 3.0;
+        const bounces    = sim.max_bounces;
+
+        const ray_fields = loader.rayFields;
+
+        for (let i = 0; i < N; i++) {
+            const o = ray_fields[`origin_${i}`].value;
+            o[0] = ray_origin[0];
+            o[1] = ray_origin[1];
+            o[2] = ray_origin[2];
+
+            ray_fields[`energy_${i}`].value[0] = energy;
+
+            const d = ray_fields[`dir_${i}`].value;
+            const rand = vec3.random(vec3.create());
+            d[0] = rand[0];
+            d[1] = rand[1];
+            d[2] = rand[2];
+
+            ray_fields[`bouncesLeft_${i}`].value[0] = bounces;
+        }
+
+        const totalBytes = N * loader.raySizeBytes;
+        loader.packBuffer(loader.rayBuffer, totalBytes, ray_fields);
+    }
+
+
+
+
 
     requestReload(){
         this.reload = true;
@@ -177,6 +211,7 @@ export class Renderer {
 
         const device = this.device;
         this.updateUniforms();
+        this.generateRayBufferData();
 
         // ----------------------------------------------------
         // PASS 0: SOUND RAY COMPUTE SHADER

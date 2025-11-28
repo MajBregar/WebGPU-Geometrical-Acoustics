@@ -27,6 +27,7 @@ export class Loader {
         this.rayBuffer = null;
         this.rayCount = settings.SIMULATION.ray_count;
         this.raySizeBytes = 32;
+        this.rayFields = null;
         this.faceStats_u32 = null;
         this.faceStats_i32 = null;
         this.faceStats = null;
@@ -68,6 +69,7 @@ export class Loader {
         this.createShadowUniformBuffer();
         this.createRayComputeUniformBuffer();
 
+        this.initRayFields();
         this.createRayBuffer();
         this.createShadowMap();
 
@@ -335,17 +337,30 @@ export class Loader {
 
 
     packBuffer(gpuBuffer, byteSize, struct) {
-        const buffer = new Float32Array(byteSize / 4);
+        const buffer = new ArrayBuffer(byteSize);
+        const f32buffer = new Float32Array(buffer);
+        const u32buffer = new Uint32Array(buffer);
+
         const alignment = 4;
         const sizes = {
             float: 1,
             vec2: 2,
             vec3: 3,
             mat4: 16,
+            u32 : 1,
+            uvec3 : 3
         };
 
         let insert_pos = 0;
         let next_align = alignment;
+
+        function set_buffer(type, val, pos) {
+            if (type === "u32" || type === "uvec3") {
+                u32buffer.set(val, pos)
+            } else {
+                f32buffer.set(val, pos);
+            }
+        }
 
         function insert_value(type, value){
             const s = sizes[type];
@@ -353,14 +368,14 @@ export class Loader {
 
             if (insert_pos + s <= next_align) {
                 //console.log("insert_pos + s <= next_align: INSERTING AT", insert_pos);
-                buffer.set(value, insert_pos);
+                set_buffer(type, value, insert_pos);
                 insert_pos += s;
                 if (insert_pos == next_align) next_align += alignment;
             } else {
                 //console.log("insert_pos + s > next_align");
                 insert_pos = insert_pos + ((alignment - (insert_pos % alignment)) % alignment)
                 //console.log("inserting at", insert_pos);
-                buffer.set(value, insert_pos);
+                set_buffer(type, value, insert_pos);
                 insert_pos += s;
                 next_align = insert_pos + ((alignment - (insert_pos % alignment)) % alignment)
 
@@ -373,16 +388,38 @@ export class Loader {
             const type = field.kind;
             const val = field.value;
             insert_value(type, val);
-            
-            
         }
 
         //console.log("OUTPUT", buffer);
-        
         this.device.queue.writeBuffer(gpuBuffer, 0, buffer);
     }
 
 
+    initRayFields() {
+        const sim = this.settings.SIMULATION;
+        const N = sim.ray_count;
+
+        this.rayFields = {};
+
+        for (let i = 0; i < N; i++) {
+            this.rayFields[`origin_${i}`] = {
+                kind: "vec3",
+                value: new Float32Array(3)
+            };
+            this.rayFields[`energy_${i}`] = {
+                kind: "float",
+                value: new Float32Array(1)
+            };
+            this.rayFields[`dir_${i}`] = {
+                kind: "vec3",
+                value: new Float32Array(3)
+            };
+            this.rayFields[`bouncesLeft_${i}`] = {
+                kind: "u32",
+                value: new Uint32Array(1)
+            };
+        }
+    }
 
 
      makeVisualizationMesh(){

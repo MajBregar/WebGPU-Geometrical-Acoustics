@@ -11,7 +11,11 @@
             "west" : false
         },
 
-        "ray_count" : 1024
+        "ray_count" : 256,
+        "max_bounces" : 100,
+        "voxel_scale_meters" : 0.1,
+        "ray_energy_min" : 0.01,
+        "emitter_position" : [10, 10, 10]
 
     },
 
