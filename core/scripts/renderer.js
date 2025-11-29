@@ -228,11 +228,11 @@ export class Renderer {
 
         device.queue.submit([encoder.finish()]);
 
-        const test = await loader.readFaceStats();
+        const faces = await loader.readFaceStats();
         
         let bounceSum = 0;
         let energySum = 0;
-        test.forEach(e => {
+        faces.forEach(e => {
             const absorbedEnergy = e.absorbedEnergy;
             const bounceCount = e.bounceCount;
             bounceSum += bounceCount;
@@ -241,6 +241,9 @@ export class Renderer {
         console.log("BS:", bounceSum, "ES:", energySum);
         
 
+        loader.updateVertexBuffer();
+
+        
 
         // ----------------------------------------------------
         // PASS 1: SHADOW MAP

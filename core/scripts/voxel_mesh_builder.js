@@ -1,3 +1,5 @@
+import { RoomBlock } from "./room_generation.js";
+
 export class VoxelMeshBuilder {
 
     constructor(dimensions) {
@@ -60,102 +62,224 @@ export class VoxelMeshBuilder {
         ];
     }
 
-    build(voxelData) {
-        const dims = this.dimensions;
+    buildFaceArrayFromVoxels(voxels) {
+        const [sx, sy, sz] = this.dimensions;
 
+        const voxelCount = sx * sy * sz;
+        const voxel_to_face = new Uint32Array(voxelCount);
+        voxel_to_face.fill(0xFFFFFFFF);
+
+        function isSolid(r, g, b, a) {
+            if (a === 0) return false;
+            return (
+                r === RoomBlock.WALL.rgba[0] &&
+                g === RoomBlock.WALL.rgba[1] &&
+                b === RoomBlock.WALL.rgba[2]
+            );
+        }
+
+        function isAirAt(index) {
+            if (index < 0 || index >= voxelCount) return true;  // outside → treat as air
+            return voxels[index * 4 + 3] === 0;
+        }
+
+        let face_count = 0;
+
+        // --------------------------------------------------------
+        // 1. Assign solidID only to voxels that are NOT interior
+        // --------------------------------------------------------
+        for (let z = 0; z < sz; z++) {
+            for (let y = 0; y < sy; y++) {
+                for (let x = 0; x < sx; x++) {
+
+                    const v = z * sy * sx + y * sx + x;
+                    const r = voxels[v * 4 + 0];
+                    const g = voxels[v * 4 + 1];
+                    const b = voxels[v * 4 + 2];
+                    const a = voxels[v * 4 + 3];
+
+                    if (!isSolid(r, g, b, a)) continue;
+
+                    const airNegX = isAirAt(v - 1);
+                    const airPosX = isAirAt(v + 1);
+                    const airNegY = isAirAt(v - sx);
+                    const airPosY = isAirAt(v + sx);
+                    const airNegZ = isAirAt(v - sx * sy);
+                    const airPosZ = isAirAt(v + sx * sy);
+
+                    // If ALL neighbors are solid → interior voxel → skip
+                    if (
+                        !airNegX && !airPosX &&
+                        !airNegY && !airPosY &&
+                        !airNegZ && !airPosZ
+                    ) {
+                        continue;
+                    }
+
+                    // Boundary voxel → assign a visible solidID
+                    voxel_to_face[v] = face_count++;
+                }
+            }
+        }
+
+        // --------------------------------------------------------
+        // 2. Build solidID → voxel coord table
+        // --------------------------------------------------------
+        const face_to_voxels = new Array(face_count);
+        for (let v = 0; v < voxelCount; v++) {
+            const id = voxel_to_face[v];
+            if (id !== 0xFFFFFFFF) {
+                const x = v % sx;
+                const y = Math.floor(v / sx) % sy;
+                const z = Math.floor(v / (sx * sy));
+                face_to_voxels[id] = [x, y, z];
+            }
+        }
+
+        return {
+            v2f: voxel_to_face,
+            f2v: face_to_voxels
+        };
+    }
+
+
+
+    applyWallVisibility(verts, starts, solidToVoxel, hide) {
+        const stride = 9;
+        const [sx, sy, sz] = this.dimensions;
+
+        for (let solidID = 0; solidID < solidToVoxel.length; solidID++) {
+
+            const voxel = solidToVoxel[solidID];
+            if (!voxel) continue;
+
+            const x = voxel[0];
+            const y = voxel[1];
+            const z = voxel[2];
+
+            // Determine if this entire voxel is on a hidden wall
+            const isHidden =
+                (hide.top    && y === sy - 1) ||
+                (hide.north  && z === 0)      ||
+                (hide.south  && z === sz - 1) ||
+                (hide.west   && x === 0)      ||
+                (hide.east   && x === sx - 1);
+
+            const colorZ = isHidden ? 0.0 : 1.0;
+
+            for (let faceLocal = 0; faceLocal < 6; faceLocal++) {
+
+                const faceIndex = solidID * 6 + faceLocal;
+                const vertexIndex = starts[faceIndex];
+                if (vertexIndex === undefined) continue;
+
+                const base = vertexIndex * stride;
+
+                // Each face has exactly 4 vertices
+                for (let v = 0; v < 4; v++) {
+                    const off = base + v * stride;
+
+                    // write the 3rd color component (Z or alpha)
+                    verts[off + 8] = colorZ;
+                }
+            }
+        }
+    }
+
+
+
+
+
+    buildStaticMesh(solidToVoxel) {
+        const [sx, sy, sz] = this.dimensions;
+
+        // ------------------------------
+        // Build solid lookup grid
+        // ------------------------------
+        const solidGrid = new Uint8Array(sx * sy * sz);
+
+        for (let id = 0; id < solidToVoxel.length; id++) {
+            const v = solidToVoxel[id];
+            if (!v) continue;
+            const idx = v[2] * sy * sx + v[1] * sx + v[0];
+            solidGrid[idx] = 1;
+        }
+
+        function isSolid(x, y, z) {
+            if (x < 0 || y < 0 || z < 0 ||
+                x >= sx || y >= sy || z >= sz)
+                return false;
+
+            return solidGrid[z * sy * sx + y * sx + x] === 1;
+        }
+
+        // ------------------------------
+        // Mesh generation
+        // ------------------------------
         const vertices = [];
         const indices = [];
 
-        const vertexMap = new Map();
+        const stride = 9;
+        const faceVertexStart = new Array(solidToVoxel.length * 6);
 
-        function voxelAt(x, y, z) {
-            if (x < 0 || x >= dims[0] ||
-                y < 0 || y >= dims[1] ||
-                z < 0 || z >= dims[2]) return 0;
+        let vertexOffset = 0;
+        let indexOffset = 0;
 
-            const i = (z * dims[1] * dims[0] + y * dims[0] + x) * 4;
-            return voxelData[i + 3] > 0 ? 1 : 0;
-        }
+        for (let solidID = 0; solidID < solidToVoxel.length; solidID++) {
+            const voxel = solidToVoxel[solidID];
+            if (!voxel) continue;
 
-        function addVertex(px, py, pz, nx, ny, nz, r, g, b) {
-            const key = `${px}_${py}_${pz}_${nx}_${ny}_${nz}_${r}_${g}_${b}`;
+            const [x, y, z] = voxel;
 
-            if (vertexMap.has(key)) {
-                return vertexMap.get(key);
-            }
+            for (let faceLocal = 0; faceLocal < 6; faceLocal++) {
+                const f = this.faces[faceLocal];
 
-            const index = vertices.length / 9;
-            vertices.push(
-                px, py, pz,
-                nx, ny, nz,
-                r, g, b
-            );
-            vertexMap.set(key, index);
-            return index;
-        }
+                // remove internal face
+                const nx = x + f.dir[0];
+                const ny = y + f.dir[1];
+                const nz = z + f.dir[2];
 
-        for (let z = 0; z < dims[2]; z++)
-        for (let y = 0; y < dims[1]; y++)
-        for (let x = 0; x < dims[0]; x++) {
+                if (isSolid(nx, ny, nz)) continue;
 
-            const i = (z * dims[1] * dims[0] + y * dims[0] + x) * 4;
-            if (voxelData[i + 3] === 0) continue;
+                const faceIndex = solidID * 6 + faceLocal;
+                faceVertexStart[faceIndex] = vertexOffset / stride;
 
-            const r = voxelData[i + 0] / 255;
-            const g = voxelData[i + 1] / 255;
-            const b = voxelData[i + 2] / 255;
+                const N = f.dir;
 
-            for (const face of this.faces) {
+                for (let c = 0; c < 4; c++) {
+                    const [cx, cy, cz] = f.corners[c];
+                    vertices.push(
+                        x + cx, y + cy, z + cz,
+                        N[0], N[1], N[2],
+                        0.7, 0.7, 0.7
+                    );
+                    vertexOffset += stride;
+                }
 
-                const nx = x + face.dir[0];
-                const ny = y + face.dir[1];
-                const nz = z + face.dir[2];
-
-                if (voxelAt(nx, ny, nz)) continue;
-
-                const N = face.dir;
-
-                const v0 = addVertex(
-                    x + face.corners[0][0],
-                    y + face.corners[0][1],
-                    z + face.corners[0][2],
-                    N[0], N[1], N[2],
-                    r, g, b
+                indices.push(
+                    indexOffset + 0,
+                    indexOffset + 1,
+                    indexOffset + 2,
+                    indexOffset + 0,
+                    indexOffset + 2,
+                    indexOffset + 3
                 );
 
-                const v1 = addVertex(
-                    x + face.corners[1][0],
-                    y + face.corners[1][1],
-                    z + face.corners[1][2],
-                    N[0], N[1], N[2],
-                    r, g, b
-                );
-
-                const v2 = addVertex(
-                    x + face.corners[2][0],
-                    y + face.corners[2][1],
-                    z + face.corners[2][2],
-                    N[0], N[1], N[2],
-                    r, g, b
-                );
-
-                const v3 = addVertex(
-                    x + face.corners[3][0],
-                    y + face.corners[3][1],
-                    z + face.corners[3][2],
-                    N[0], N[1], N[2],
-                    r, g, b
-                );
-
-                indices.push(v0, v1, v2, v0, v2, v3);
+                indexOffset += 4;
             }
         }
 
         return {
             vertices: new Float32Array(vertices),
             indices: new Uint32Array(indices),
-            indexCount: indices.length
+            indexCount: indices.length,
+            faceVertexStart
         };
     }
+
+
+
+
+
 
 }

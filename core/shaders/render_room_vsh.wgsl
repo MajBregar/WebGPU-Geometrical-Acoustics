@@ -39,6 +39,12 @@ struct VSOutput {
 fn vs_main(input : VSInput) -> VSOutput {
     var out : VSOutput;
 
+
+    if (input.color.z <= 0.0) {
+        out.position = vec4<f32>(1e9, 1e9, 1e9, 1.0);
+        return out;
+    }
+
     let worldPos = vec4<f32>(input.position, 1.0);
 
     out.position = uni.viewProj * worldPos;

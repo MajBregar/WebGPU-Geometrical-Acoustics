@@ -14,4 +14,5 @@ A simple WebGPU-based simulation of geometrical acoustics.
 
 # TODO
 
-- optimize face buffer by culling faces between 2 voxels
+- optimize face buffer by culling faces between 2 voxels - VERY HIGH PRIORITY
+- clean up disgusting code

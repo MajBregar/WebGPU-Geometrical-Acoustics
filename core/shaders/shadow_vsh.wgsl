@@ -19,6 +19,11 @@ struct VSOut {
 fn vs_shadow_main(input : VSIn) -> VSOut {
     var out : VSOut;
 
+    if (input.color.z <= 0.0) {
+        out.position = vec4<f32>(1e9, 1e9, 1e9, 1.0);
+        return out;
+    }
+
     let world = vec4<f32>(input.pos, 1.0);
     out.position = uni.shadowViewProj * world;
 

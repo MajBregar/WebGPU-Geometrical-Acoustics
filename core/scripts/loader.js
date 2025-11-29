@@ -22,6 +22,7 @@ export class Loader {
         this.statsBuffer = null;
         this.statsReadbackBuffer = null;
         this.emptyStatsCPU = null;
+        this.solidIDToVoxel_CPU = null;
         this.rayComputeUniformBuffer = null;
         this.rayComputeUniformBufferSize = 32 * 4;
         this.energyBandBuffer = null;
@@ -64,6 +65,8 @@ export class Loader {
         const main_vsh = await this.loadShader(this.vertexShaderURL);
         const main_fsh = await this.loadShader(this.fragmentShaderURL);
         
+        this.mesh_builder = new VoxelMeshBuilder(this.room_dimensions);
+
         this.createUniformBuffer();
         this.createShadowUniformBuffer();
         this.createRayComputeUniformBuffer();
@@ -76,8 +79,9 @@ export class Loader {
         this.createVoxelCoefBuffer();
         this.createWritebackBuffers();
 
-        const mesh = this.makeVisualizationMesh();
-        this.createMeshBuffers(mesh);
+
+        this.createMeshAndBuffers();
+
 
         this.createRayComputePipeline(ray_csh);
         this.createShadowPipeline(shadow_vsh);
@@ -87,8 +91,20 @@ export class Loader {
     }
 
     reload(){
-        const mesh = this.makeVisualizationMesh();
-        this.createMeshBuffers(mesh);
+        const builder = this.mesh_builder;
+        const face_to_ind = this.solidIDToVoxel_CPU;
+        const hide_walls = this.settings.SIMULATION.hide_walls;
+        builder.applyWallVisibility(this.vertexDataCPU, this.faceVertexStart, face_to_ind, hide_walls);
+        this.updateVertexBuffer();
+
+    }
+
+    updateVertexBuffer() {
+        this.device.queue.writeBuffer(
+            this.vertexBuffer,
+            0,
+            this.vertexDataCPU
+        );
     }
 
 
@@ -249,76 +265,47 @@ export class Loader {
         return coefBuffer;
     }
 
+    
+
+
     createWritebackBuffers() {
-        const sx = this.room_dimensions[0];
-        const sy = this.room_dimensions[1];
-        const sz = this.room_dimensions[2];
+        const builder = this.mesh_builder;
+        const geometry_data = builder.buildFaceArrayFromVoxels(this.room_voxel_data);
+        const voxel_to_face = geometry_data.v2f;
+        const face_to_voxel = geometry_data.f2v;
 
-        const voxelRGBA = this.room_voxel_data;
-        const voxelCount = sx * sy * sz;
+        this.voxelToSolidID_CPU = voxel_to_face;
+        this.solidIDToVoxel_CPU = face_to_voxel;
 
-        const voxelToSolidID = new Uint32Array(voxelCount);
-        let solidID = 0;
+        this.solidCount = face_to_voxel.length;
+        const faceCount = face_to_voxel.length * 6;
+        this.statsByteSize = faceCount * 8;
+        this.emptyStatsCPU = new ArrayBuffer(this.statsByteSize);
 
-        function isSolid(r, g, b, a) {
-            if (a === 0) return false;
-            return (
-                r === RoomBlock.WALL.rgba[0] &&
-                g === RoomBlock.WALL.rgba[1] &&
-                b === RoomBlock.WALL.rgba[2]
-            );
-        }
-
-        for (let i = 0; i < voxelCount; i++) {
-            const base = i * 4;
-            const r = voxelRGBA[base + 0];
-            const g = voxelRGBA[base + 1];
-            const b = voxelRGBA[base + 2];
-            const a = voxelRGBA[base + 3];
-
-            if (isSolid(r, g, b, a)) {
-                voxelToSolidID[i] = solidID++;
-            } else {
-                voxelToSolidID[i] = 0xFFFFFFFF;
-            }
-        }
-
-        const solidCount = solidID;
-        const faceCount = solidCount * 6;
-
-        const statsByteSize = faceCount * 8;
-        const emptyStatsCPU = new ArrayBuffer(statsByteSize);
-
-        this.voxelToSolidID_CPU = voxelToSolidID;
-        this.solidCount = solidCount;
-        this.statsByteSize = statsByteSize;
 
         //translation buffer
         this.voxelToSolidIDBuffer = this.device.createBuffer({
-            size: voxelToSolidID.byteLength,
+            size: voxel_to_face.byteLength,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
         this.device.queue.writeBuffer(
             this.voxelToSolidIDBuffer,
             0,
-            voxelToSolidID.buffer,
-            voxelToSolidID.byteOffset,
-            voxelToSolidID.byteLength
+            voxel_to_face.buffer,
+            voxel_to_face.byteOffset,
+            voxel_to_face.byteLength
         );
 
-
         this.statsBuffer = this.device.createBuffer({
-            size: statsByteSize,
+            size: this.statsByteSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         });
 
         //readback buffer
         this.statsReadbackBuffer = this.device.createBuffer({
-            size: statsByteSize,
+            size: this.statsByteSize,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
         });
-
-        this.emptyStatsCPU = emptyStatsCPU;
 
         //read back preallocation
         this.faceStats = new Array(faceCount);
@@ -328,8 +315,67 @@ export class Loader {
                 absorbedEnergy: 0
             };
         }
-
     }
+
+
+
+
+    createMeshAndBuffers() {
+        const device = this.device;
+        const builder = this.mesh_builder;
+
+        const hide_walls = this.settings.SIMULATION.hide_walls;
+        const face_to_ind = this.solidIDToVoxel_CPU;
+        const mesh = builder.buildStaticMesh(face_to_ind);
+        builder.applyWallVisibility(mesh.vertices, mesh.faceVertexStart, face_to_ind, hide_walls);
+
+
+        // Store CPU copies so we can modify vertex colors later:
+        this.vertexDataCPU = mesh.vertices.slice();
+        this.indexDataCPU  = mesh.indices.slice();
+        this.faceVertexStart = mesh.faceVertexStart;
+        
+        this.vertexStride = 9;
+        this.vertexCount  = this.vertexDataCPU.length / this.vertexStride;
+
+        this.vertexBuffer = device.createBuffer({
+            size: this.vertexDataCPU.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+        });
+
+        device.queue.writeBuffer(
+            this.vertexBuffer,
+            0,
+            this.vertexDataCPU
+        );
+
+        this.indexBuffer = device.createBuffer({
+            size: this.indexDataCPU.byteLength,
+            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST
+        });
+
+        device.queue.writeBuffer(
+            this.indexBuffer,
+            0,
+            this.indexDataCPU
+        );
+
+
+        this.indexCount = mesh.indexCount;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -391,39 +437,37 @@ export class Loader {
         this.device.queue.writeBuffer(gpuBuffer, 0, buffer);
     }
 
-    makeVisualizationMesh(){
-        const raw_voxel_data = this.room_voxel_data;
-        const hide_walls_flags = this.settings.SIMULATION.hide_walls;
-        const dimensions = this.room_dimensions;
 
-        const filtered_voxel_data = hideWalls(raw_voxel_data, hide_walls_flags, dimensions);
-
-        const builder = new VoxelMeshBuilder(dimensions);
-        return builder.build(filtered_voxel_data);
-     }
+    
 
 
-    createMeshBuffers(mesh) {
-        const device = this.device;
 
-        this.indexCount = mesh.indexCount;
 
-        this.vertexBuffer = device.createBuffer({
-            size: mesh.vertices.byteLength,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-            mappedAtCreation: true
-        });
-        new Float32Array(this.vertexBuffer.getMappedRange()).set(mesh.vertices);
-        this.vertexBuffer.unmap();
 
-        this.indexBuffer = device.createBuffer({
-            size: mesh.indices.byteLength,
-            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-            mappedAtCreation: true
-        });
-        new Uint32Array(this.indexBuffer.getMappedRange()).set(mesh.indices);
-        this.indexBuffer.unmap();
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     createUniformBuffer() {
