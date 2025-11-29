@@ -137,43 +137,22 @@ export class Renderer {
             room_dims : type_uvec3(sim.room_dimensions),
             max_bounce : type_u32(sim.max_bounces),
             voxel_size_meters : type_float(sim.voxel_scale_meters),
-            ray_count : type_u32(sim.ray_count),
-            energy_cutoff : type_float(sim.ray_energy_min)
+            energy_bands : type_u32(sim.energy_bands),
+            energy_cutoff : type_float(sim.ray_energy_min),
+            ray_count : type_u32(sim.ray_count)
         }
 
         loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
     }
 
-    generateRayBufferData() {
+    generateEnergyBandBufferData() {
         const sim = this.settings.SIMULATION;
         const loader = this.loader;
-
-        const N          = sim.ray_count;
-        const ray_origin = sim.emitter_position;
-        const energy     = 3.0;
-        const bounces    = sim.max_bounces;
-
-        const ray_fields = loader.rayFields;
-
-        for (let i = 0; i < N; i++) {
-            const o = ray_fields[`origin_${i}`].value;
-            o[0] = ray_origin[0];
-            o[1] = ray_origin[1];
-            o[2] = ray_origin[2];
-
-            ray_fields[`energy_${i}`].value[0] = energy;
-
-            const d = ray_fields[`dir_${i}`].value;
-            const rand = vec3.random(vec3.create());
-            d[0] = rand[0];
-            d[1] = rand[1];
-            d[2] = rand[2];
-
-            ray_fields[`bouncesLeft_${i}`].value[0] = bounces;
+        const energy = new Float32Array(loader.energyBandCount);
+        for (let i = 0; i < energy.length; i++){
+            energy[i] = i + 1;
         }
-
-        const totalBytes = N * loader.raySizeBytes;
-        loader.packBuffer(loader.rayBuffer, totalBytes, ray_fields);
+        this.device.queue.writeBuffer(loader.energyBandBuffer, 0, energy);
     }
 
 
@@ -210,8 +189,10 @@ export class Renderer {
         }
 
         const device = this.device;
+        const settings = this.settings;
+
         this.updateUniforms();
-        this.generateRayBufferData();
+        this.generateEnergyBandBufferData();
 
         // ----------------------------------------------------
         // PASS 0: SOUND RAY COMPUTE SHADER
@@ -227,8 +208,10 @@ export class Renderer {
 
         const computePass = encoder.beginComputePass();
         computePass.setPipeline(loader.rayPipeline);
+
         computePass.setBindGroup(0, loader.rayBindGroup);
-        const workgroups = Math.ceil(loader.rayCount / 64);
+        const workgroups = Math.ceil(settings.SIMULATION.ray_count / 64);
+
         computePass.dispatchWorkgroups(workgroups);
         computePass.end();
         
@@ -245,12 +228,16 @@ export class Renderer {
         const test = await loader.readFaceStats();
         
         let sum = 0;
+        let energySum = 0;
+
         test.forEach(e => {
             const absorbedEnergy = e.absorbedEnergy;
             const bounceCount = e.bounceCount;
             sum += bounceCount;
+            energySum += absorbedEnergy;
         });
-        console.log(sum);
+        console.log(energySum);
+        
 
 
         // ----------------------------------------------------

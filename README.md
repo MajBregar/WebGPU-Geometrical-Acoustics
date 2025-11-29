@@ -11,3 +11,7 @@ A simple WebGPU-based simulation of geometrical acoustics.
 - use compressedInd * 6 + FaceID to get position of the readback buffer data and ATOMIC WRITE in the absorption data
 - after ray tracing step send the readback buffer data to CPU -> decode into face colors
 
+
+# TODO
+
+- optimize face buffer by culling faces between 2 voxels

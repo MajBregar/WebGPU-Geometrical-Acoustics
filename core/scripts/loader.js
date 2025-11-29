@@ -24,10 +24,9 @@ export class Loader {
         this.emptyStatsCPU = null;
         this.rayComputeUniformBuffer = null;
         this.rayComputeUniformBufferSize = 32 * 4;
-        this.rayBuffer = null;
-        this.rayCount = settings.SIMULATION.ray_count;
-        this.raySizeBytes = 32;
-        this.rayFields = null;
+        this.energyBandBuffer = null;
+        this.energyBandCount = settings.SIMULATION.energy_bands;
+        this.energyBandSizeBytes = 4;
         this.faceStats_u32 = null;
         this.faceStats_i32 = null;
         this.faceStats = null;
@@ -69,8 +68,7 @@ export class Loader {
         this.createShadowUniformBuffer();
         this.createRayComputeUniformBuffer();
 
-        this.initRayFields();
-        this.createRayBuffer();
+        this.createEnergyBandBuffer();
         this.createShadowMap();
 
         this.room_voxel_data = generateRoom(this.room_dimensions);
@@ -100,14 +98,13 @@ export class Loader {
 
         const mapped = buf.getMappedRange();
         const u32 = new Uint32Array(mapped);
-        const i32 = new Int32Array(mapped);
 
         const arr = this.faceStats;
         const faceCount = this.solidCount * 6;
 
         for (let f = 0; f < faceCount; f++) {
             arr[f].bounceCount    = u32[f * 2 + 0];
-            arr[f].absorbedEnergy = i32[f * 2 + 1];
+            arr[f].absorbedEnergy = u32[f * 2 + 1];
         }
 
         buf.unmap();
@@ -140,9 +137,9 @@ export class Loader {
         if (!this.emptyStatsCPU) return false;
 
         if (!this.rayComputeUniformBuffer) return false;
-        if (!this.rayBuffer) return false;
-        if (this.rayCount <= 0) return false;
-        if (this.raySizeBytes <= 0) return false;
+        if (!this.energyBandBuffer) return false;
+        if (this.energyBandCount <= 0) return false;
+        if (this.energyBandSizeBytes <= 0) return false;
 
         // Raster-vis geometry
         if (!this.vertexBuffer) return false;
@@ -200,9 +197,9 @@ export class Loader {
         });
     }
 
-    createRayBuffer() {
-        this.rayBuffer = this.device.createBuffer({
-            size: this.rayCount * this.raySizeBytes,
+    createEnergyBandBuffer() {
+        this.energyBandBuffer = this.device.createBuffer({
+            size: this.energyBandCount * this.energyBandSizeBytes,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
     }
@@ -394,35 +391,7 @@ export class Loader {
         this.device.queue.writeBuffer(gpuBuffer, 0, buffer);
     }
 
-
-    initRayFields() {
-        const sim = this.settings.SIMULATION;
-        const N = sim.ray_count;
-
-        this.rayFields = {};
-
-        for (let i = 0; i < N; i++) {
-            this.rayFields[`origin_${i}`] = {
-                kind: "vec3",
-                value: new Float32Array(3)
-            };
-            this.rayFields[`energy_${i}`] = {
-                kind: "float",
-                value: new Float32Array(1)
-            };
-            this.rayFields[`dir_${i}`] = {
-                kind: "vec3",
-                value: new Float32Array(3)
-            };
-            this.rayFields[`bouncesLeft_${i}`] = {
-                kind: "u32",
-                value: new Uint32Array(1)
-            };
-        }
-    }
-
-
-     makeVisualizationMesh(){
+    makeVisualizationMesh(){
         const raw_voxel_data = this.room_voxel_data;
         const hide_walls_flags = this.settings.SIMULATION.hide_walls;
         const dimensions = this.room_dimensions;
@@ -663,11 +632,11 @@ export class Loader {
                     buffer: { type: "storage" }
                 },
 
-                // 4: Ray buffer (dynamic storage buffer)
+                // 4: energy bands
                 {
                     binding: 4,
                     visibility: GPUShaderStage.COMPUTE,
-                    buffer: { type: "storage" }
+                    buffer: { type: "read-only-storage" }
                 }
             ]
         });
@@ -711,10 +680,10 @@ export class Loader {
                     resource: { buffer: this.statsBuffer }
                 },
 
-                // 4 - ray buffer
+                // 4 - energy bands
                 {
                     binding: 4,
-                    resource: { buffer: this.rayBuffer }
+                    resource: { buffer: this.energyBandBuffer }
                 }
             ]
         });
