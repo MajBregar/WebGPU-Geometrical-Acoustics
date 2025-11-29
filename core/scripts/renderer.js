@@ -136,10 +136,13 @@ export class Renderer {
         const ray_uniforms = {
             room_dims : type_uvec3(sim.room_dimensions),
             max_bounce : type_u32(sim.max_bounces),
+
+            ray_origin : type_vec3(sim.emitter_position),
             voxel_size_meters : type_float(sim.voxel_scale_meters),
+
+            ray_count : type_u32(sim.ray_count),
             energy_bands : type_u32(sim.energy_bands),
             energy_cutoff : type_float(sim.ray_energy_min),
-            ray_count : type_u32(sim.ray_count)
         }
 
         loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
@@ -227,16 +230,15 @@ export class Renderer {
 
         const test = await loader.readFaceStats();
         
-        let sum = 0;
+        let bounceSum = 0;
         let energySum = 0;
-
         test.forEach(e => {
             const absorbedEnergy = e.absorbedEnergy;
             const bounceCount = e.bounceCount;
-            sum += bounceCount;
+            bounceSum += bounceCount;
             energySum += absorbedEnergy;
         });
-        console.log(energySum);
+        console.log("BS:", bounceSum, "ES:", energySum);
         
 
 
