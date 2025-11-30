@@ -144,58 +144,9 @@ export class VoxelMeshBuilder {
 
 
 
-    applyWallVisibility(verts, starts, solidToVoxel, hide) {
-        const stride = 9;
-        const [sx, sy, sz] = this.dimensions;
-
-        for (let solidID = 0; solidID < solidToVoxel.length; solidID++) {
-
-            const voxel = solidToVoxel[solidID];
-            if (!voxel) continue;
-
-            const x = voxel[0];
-            const y = voxel[1];
-            const z = voxel[2];
-
-            // Determine if this entire voxel is on a hidden wall
-            const isHidden =
-                (hide.top    && y === sy - 1) ||
-                (hide.north  && z === 0)      ||
-                (hide.south  && z === sz - 1) ||
-                (hide.west   && x === 0)      ||
-                (hide.east   && x === sx - 1);
-
-            const colorZ = isHidden ? 0.0 : 1.0;
-
-            for (let faceLocal = 0; faceLocal < 6; faceLocal++) {
-
-                const faceIndex = solidID * 6 + faceLocal;
-                const vertexIndex = starts[faceIndex];
-                if (vertexIndex === undefined) continue;
-
-                const base = vertexIndex * stride;
-
-                // Each face has exactly 4 vertices
-                for (let v = 0; v < 4; v++) {
-                    const off = base + v * stride;
-
-                    // write the 3rd color component (Z or alpha)
-                    verts[off + 8] = colorZ;
-                }
-            }
-        }
-    }
-
-
-
-
-
     buildStaticMesh(solidToVoxel) {
         const [sx, sy, sz] = this.dimensions;
 
-        // ------------------------------
-        // Build solid lookup grid
-        // ------------------------------
         const solidGrid = new Uint8Array(sx * sy * sz);
 
         for (let id = 0; id < solidToVoxel.length; id++) {
@@ -205,24 +156,19 @@ export class VoxelMeshBuilder {
             solidGrid[idx] = 1;
         }
 
-        function isSolid(x, y, z) {
+        const isSolid = (x, y, z) => {
             if (x < 0 || y < 0 || z < 0 ||
                 x >= sx || y >= sy || z >= sz)
                 return false;
-
             return solidGrid[z * sy * sx + y * sx + x] === 1;
-        }
+        };
 
-        // ------------------------------
-        // Mesh generation
-        // ------------------------------
+        const stride = 7; // 7 u32s per vertex: 6 floats + 1 uint
         const vertices = [];
         const indices = [];
-
-        const stride = 9;
         const faceVertexStart = new Array(solidToVoxel.length * 6);
 
-        let vertexOffset = 0;
+        let vertexCount = 0;
         let indexOffset = 0;
 
         for (let solidID = 0; solidID < solidToVoxel.length; solidID++) {
@@ -234,7 +180,6 @@ export class VoxelMeshBuilder {
             for (let faceLocal = 0; faceLocal < 6; faceLocal++) {
                 const f = this.faces[faceLocal];
 
-                // remove internal face
                 const nx = x + f.dir[0];
                 const ny = y + f.dir[1];
                 const nz = z + f.dir[2];
@@ -242,18 +187,20 @@ export class VoxelMeshBuilder {
                 if (isSolid(nx, ny, nz)) continue;
 
                 const faceIndex = solidID * 6 + faceLocal;
-                faceVertexStart[faceIndex] = vertexOffset / stride;
+                faceVertexStart[faceIndex] = vertexCount;
 
                 const N = f.dir;
 
                 for (let c = 0; c < 4; c++) {
                     const [cx, cy, cz] = f.corners[c];
+
                     vertices.push(
                         x + cx, y + cy, z + cz,
                         N[0], N[1], N[2],
-                        0.7, 0.7, 0.7
+                        faceIndex
                     );
-                    vertexOffset += stride;
+
+                    vertexCount++;
                 }
 
                 indices.push(
@@ -269,13 +216,25 @@ export class VoxelMeshBuilder {
             }
         }
 
+        const vertexArray = new Uint32Array(vertices.length);
+        const floatView = new Float32Array(vertexArray.buffer);
+
+        for (let i = 0; i < vertices.length; i++) {
+            if ((i % stride) === 6) {
+                vertexArray[i] = vertices[i];
+            } else {
+                floatView[i] = vertices[i];
+            }
+        }
+
         return {
-            vertices: new Float32Array(vertices),
+            vertices: vertexArray,
             indices: new Uint32Array(indices),
             indexCount: indices.length,
             faceVertexStart
         };
     }
+
 
 
 

@@ -12,6 +12,10 @@ export class Loader {
         this.room_dimensions = settings.SIMULATION.room_dimensions;
         this.room_voxel_data = null;
         this.room_voxel_coefs = null;
+        this.faceColorBuffer = null;
+        this.faceColorCPU = null;   // Float16Array
+        this.faceCount = 0;
+
 
         //voxelized ray tracing pipeline
         this.rayTracingComputeShaderURL = "./core/shaders/ray_compute.wgsl";
@@ -81,6 +85,7 @@ export class Loader {
 
 
         this.createMeshAndBuffers();
+        this.createFaceColorBuffer();
 
 
         this.createRayComputePipeline(ray_csh);
@@ -94,19 +99,10 @@ export class Loader {
         const builder = this.mesh_builder;
         const face_to_ind = this.solidIDToVoxel_CPU;
         const hide_walls = this.settings.SIMULATION.hide_walls;
-        builder.applyWallVisibility(this.vertexDataCPU, this.faceVertexStart, face_to_ind, hide_walls);
-        this.updateVertexBuffer();
 
     }
 
-    updateVertexBuffer() {
-        this.device.queue.writeBuffer(
-            this.vertexBuffer,
-            0,
-            this.vertexDataCPU
-        );
-    }
-
+    
 
     async readFaceStats() {
         const buf = this.statsReadbackBuffer;
@@ -279,6 +275,7 @@ export class Loader {
 
         this.solidCount = face_to_voxel.length;
         const faceCount = face_to_voxel.length * 6;
+        this.faceCount = faceCount;
         this.statsByteSize = faceCount * 8;
         this.emptyStatsCPU = new ArrayBuffer(this.statsByteSize);
 
@@ -318,6 +315,27 @@ export class Loader {
     }
 
 
+    updateFaceColorBuffer() {
+        this.device.queue.writeBuffer(
+            this.faceColorBuffer,
+            0,
+            this.faceColorCPU
+        );
+    }
+
+
+
+    createFaceColorBuffer() {
+        const count = this.faceCount;        
+        const bytes = count * 4;
+
+        this.faceColorCPU = new Uint32Array(count);
+        
+        this.faceColorBuffer = this.device.createBuffer({
+            size: bytes,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+    }
 
 
     createMeshAndBuffers() {
@@ -327,7 +345,6 @@ export class Loader {
         const hide_walls = this.settings.SIMULATION.hide_walls;
         const face_to_ind = this.solidIDToVoxel_CPU;
         const mesh = builder.buildStaticMesh(face_to_ind);
-        builder.applyWallVisibility(mesh.vertices, mesh.faceVertexStart, face_to_ind, hide_walls);
 
 
         // Store CPU copies so we can modify vertex colors later:
@@ -335,7 +352,7 @@ export class Loader {
         this.indexDataCPU  = mesh.indices.slice();
         this.faceVertexStart = mesh.faceVertexStart;
         
-        this.vertexStride = 9;
+        this.vertexStride = 7;
         this.vertexCount  = this.vertexDataCPU.length / this.vertexStride;
 
         this.vertexBuffer = device.createBuffer({
@@ -515,20 +532,25 @@ export class Loader {
 
         const bindGroupLayout = device.createBindGroupLayout({
             entries: [
-                {
+                { // uniforms
                     binding: 0,
                     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
                     buffer: { type: "uniform" }
                 },
-                {
+                { // shadow texture
                     binding: 1,
                     visibility: GPUShaderStage.FRAGMENT,
                     texture: { sampleType: "depth" }
                 },
-                {
+                { // shadow sampler
                     binding: 2,
                     visibility: GPUShaderStage.FRAGMENT,
                     sampler: { type: "comparison" }
+                },
+                { // faceColorBuffer (u32)
+                    binding: 3,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                    buffer: { type: "read-only-storage" }
                 }
             ]
         });
@@ -536,7 +558,6 @@ export class Loader {
         const pipelineLayout = device.createPipelineLayout({
             bindGroupLayouts: [bindGroupLayout]
         });
-
 
         this.pipeline = device.createRenderPipeline({
             layout: pipelineLayout,
@@ -546,11 +567,11 @@ export class Loader {
                 entryPoint: "vs_main",
                 buffers: [
                     {
-                        arrayStride: 9 * 4,
+                        arrayStride: 7 * 4,
                         attributes: [
                             { shaderLocation: 0, offset: 0,  format: "float32x3" },
                             { shaderLocation: 1, offset: 12, format: "float32x3" },
-                            { shaderLocation: 2, offset: 24, format: "float32x3" }
+                            { shaderLocation: 2, offset: 24, format: "uint32" }
                         ]
                     }
                 ]
@@ -559,15 +580,10 @@ export class Loader {
             fragment: {
                 module: fModule,
                 entryPoint: "fs_main",
-                targets: [
-                    { format: navigator.gpu.getPreferredCanvasFormat() }
-                ]
+                targets: [{ format: navigator.gpu.getPreferredCanvasFormat() }]
             },
 
-            primitive: {
-                topology: "triangle-list",
-                cullMode: "none"
-            },
+            primitive: { topology: "triangle-list", cullMode: "none" },
 
             depthStencil: {
                 format: this.depthFormat,
@@ -581,10 +597,12 @@ export class Loader {
             entries: [
                 { binding: 0, resource: { buffer: this.uniformBuffer } },
                 { binding: 1, resource: this.shadowMapView },
-                { binding: 2, resource: this.shadowSampler }
+                { binding: 2, resource: this.shadowSampler },
+                { binding: 3, resource: { buffer: this.faceColorBuffer } }
             ]
         });
     }
+
 
     createShadowPipeline(vsh) {
         const device = this.device;
@@ -592,10 +610,15 @@ export class Loader {
 
         const shadowBindGroupLayout = device.createBindGroupLayout({
             entries: [
-                {
+                { // shadowViewProj
                     binding: 0,
                     visibility: GPUShaderStage.VERTEX,
                     buffer: { type: "uniform" }
+                },
+                { // faceColorBuffer
+                    binding: 1,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: { type: "read-only-storage" }
                 }
             ]
         });
@@ -612,20 +635,17 @@ export class Loader {
                 entryPoint: "vs_shadow_main",
                 buffers: [
                     {
-                        arrayStride: 9 * 4,
+                        arrayStride: 7 * 4,
                         attributes: [
                             { shaderLocation: 0, offset: 0,  format: "float32x3" },
                             { shaderLocation: 1, offset: 12, format: "float32x3" },
-                            { shaderLocation: 2, offset: 24, format: "float32x3" }
+                            { shaderLocation: 2, offset: 24, format: "uint32" }
                         ]
                     }
                 ]
             },
 
-            primitive: {
-                topology: "triangle-list",
-                cullMode: "none"
-            },
+            primitive: { topology: "triangle-list", cullMode: "none" },
 
             depthStencil: {
                 format: this.shadowMapFormat,
@@ -637,10 +657,12 @@ export class Loader {
         this.shadowBindGroup = device.createBindGroup({
             layout: shadowBindGroupLayout,
             entries: [
-                { binding: 0, resource: { buffer: this.shadowUniformBuffer } }
+                { binding: 0, resource: { buffer: this.shadowUniformBuffer } },
+                { binding: 1, resource: { buffer: this.faceColorBuffer } }            
             ]
         });
     }
+
 
     createRayComputePipeline(computeShaderCode) {
         const device = this.device;

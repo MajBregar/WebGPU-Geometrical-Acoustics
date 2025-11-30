@@ -148,6 +148,79 @@ export class Renderer {
         loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
     }
 
+
+    rgba_to_u32([r, g, b, a]) {
+        return ((r & 0xFF) << 24) |
+            ((g & 0xFF) << 16) |
+            ((b & 0xFF) <<  8) |
+            ((a & 0xFF) <<  0);
+    }
+
+    updateColors() {
+        const loader = this.loader;
+        const hide = this.settings.SIMULATION.hide_walls;
+        const face_to_voxel = loader.solidIDToVoxel_CPU;
+
+        const [sx, sy, sz] = loader.room_dimensions;
+
+        const defaultRGB = [120, 120, 120];
+        const faceCount = loader.faceCount;
+
+        for (let faceID = 0; faceID < faceCount; faceID++) {
+
+
+            const voxel = face_to_voxel[faceID];
+            if (!voxel) {
+                continue;
+            }
+
+            const [x, y, z] = voxel;
+            
+            
+
+            const faceLocal = faceID % 6;
+            let visible = true;
+
+            switch (faceLocal) {
+
+                case 0:
+                    if (hide.east && x === sx - 1) visible = false;
+                    break;
+
+                case 1:
+                    if (hide.west && x === 0) visible = false;
+                    break;
+
+                case 2:
+                    if (hide.top && y === sy - 1) visible = false;
+                    break;
+
+                case 3:
+                    break;
+
+                case 4:
+                    if (hide.south && z === sz - 1) visible = false;
+                    break;
+
+                case 5:
+                    if (hide.north && z === 0) visible = false;
+                    break;
+            }
+
+            const alpha = visible ? 255 : 0;
+
+            loader.faceColorCPU[faceID] = this.rgba_to_u32([
+                defaultRGB[0],
+                defaultRGB[1],
+                defaultRGB[2],
+                alpha
+            ]);
+        }
+
+        loader.updateFaceColorBuffer();
+    }
+
+
     generateEnergyBandBufferData() {
         const sim = this.settings.SIMULATION;
         const loader = this.loader;
@@ -240,9 +313,7 @@ export class Renderer {
         });
         console.log("BS:", bounceSum, "ES:", energySum);
         
-
-        loader.updateVertexBuffer();
-
+        this.updateColors(faces);
         
 
         // ----------------------------------------------------
