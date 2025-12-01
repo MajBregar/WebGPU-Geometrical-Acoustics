@@ -97,9 +97,9 @@ export class Loader {
 
     reload(){
         const builder = this.mesh_builder;
-        const face_to_ind = this.solidIDToVoxel_CPU;
+        const face_to_voxel = this.solidIDToVoxel_CPU;
         const hide_walls = this.settings.SIMULATION.hide_walls;
-
+        this.hiddenWallFlags_CPU = builder.buildHiddenFaceMask(face_to_voxel, hide_walls);
     }
 
     
@@ -112,7 +112,7 @@ export class Loader {
         const u32 = new Uint32Array(mapped);
 
         const arr = this.faceStats;
-        const faceCount = this.solidCount * 6;
+        const faceCount = this.solidCount;
 
         for (let f = 0; f < faceCount; f++) {
             arr[f].bounceCount    = u32[f * 2 + 0];
@@ -270,11 +270,13 @@ export class Loader {
         const voxel_to_face = geometry_data.v2f;
         const face_to_voxel = geometry_data.f2v;
 
+        this.hiddenWallFlags_CPU = builder.buildHiddenFaceMask(face_to_voxel, this.settings.SIMULATION.hide_walls);
+
         this.voxelToSolidID_CPU = voxel_to_face;
         this.solidIDToVoxel_CPU = face_to_voxel;
 
         this.solidCount = face_to_voxel.length;
-        const faceCount = face_to_voxel.length * 6;
+        const faceCount = face_to_voxel.length;
         this.faceCount = faceCount;
         this.statsByteSize = faceCount * 8;
         this.emptyStatsCPU = new ArrayBuffer(this.statsByteSize);
@@ -342,9 +344,9 @@ export class Loader {
         const device = this.device;
         const builder = this.mesh_builder;
 
-        const hide_walls = this.settings.SIMULATION.hide_walls;
-        const face_to_ind = this.solidIDToVoxel_CPU;
-        const mesh = builder.buildStaticMesh(face_to_ind);
+        const face_to_voxel = this.solidIDToVoxel_CPU;
+        const voxel_to_face = this.voxelToSolidID_CPU;
+        const mesh = builder.buildStaticMesh(face_to_voxel, voxel_to_face);
 
 
         // Store CPU copies so we can modify vertex colors later:

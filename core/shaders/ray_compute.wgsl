@@ -43,7 +43,7 @@ fn world_to_voxel(pos : vec3<f32>) -> vec3<u32> {
     return vec3<u32>(floor(pos));
 }
 
-fn voxel_to_ind(id : vec3<u32>, room : vec3<u32>) -> u32 {
+fn get_voxelID(id : vec3<u32>, room : vec3<u32>) -> u32 {
     return id.z * room.y * room.x + id.y * room.x + id.x;
 }
 
@@ -112,7 +112,7 @@ fn trace_ray(
 
         let newPos = hitPos - N * 1e-4;
 
-        let flatID = voxel_to_ind(voxelID, uni.roomSize);
+        let flatID = get_voxelID(voxelID, uni.roomSize);
         let absorption = voxelCoef[flatID];
         let isWall = absorption > 0.0;
 
@@ -131,15 +131,13 @@ fn trace_ray(
             total += localEnergy[j];
         }
 
-        let faceID = axis * 2u + select(1u, 0u, dir[axis] > 0.0);
-
-        let solidID = voxelToSolidID[flatID];
-        if (solidID != 0xffffffffu) {
-            let faceIndex = solidID * 6u + faceID;
-            atomicAdd(&stats[faceIndex].bounceCount, 1u);
+        let localFaceID = axis * 2u + select(1u, 0u, dir[axis] > 0.0);
+        let faceID = voxelToSolidID[flatID * 6 + localFaceID];
+        if (faceID != 0xffffffffu) {
+            atomicAdd(&stats[faceID].bounceCount, 1u);
 
             let e = u32(total * 1000.0);
-            atomicAdd(&stats[faceIndex].absorbedEnergy, e);
+            atomicAdd(&stats[faceID].absorbedEnergy, e);
         }
 
         dir = normalize(dir - 2.0 * dot(dir, N) * N);
@@ -172,4 +170,5 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     }
 
     let result = trace_ray(uni.rayOrigin, dir, initialEnergy);
+
 }

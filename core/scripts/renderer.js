@@ -156,64 +156,30 @@ export class Renderer {
             ((a & 0xFF) <<  0);
     }
 
-    updateColors() {
+    updateColors(face_data) {
         const loader = this.loader;
         const hide = this.settings.SIMULATION.hide_walls;
         const face_to_voxel = loader.solidIDToVoxel_CPU;
 
         const [sx, sy, sz] = loader.room_dimensions;
 
+        const hidden_walls = loader.hiddenWallFlags_CPU;
+
         const defaultRGB = [120, 120, 120];
         const faceCount = loader.faceCount;
 
+        
         for (let faceID = 0; faceID < faceCount; faceID++) {
+            const face = face_data[faceID];
 
-
-            const voxel = face_to_voxel[faceID];
-            if (!voxel) {
-                continue;
-            }
-
-            const [x, y, z] = voxel;
-            
-            
-
-            const faceLocal = faceID % 6;
-            let visible = true;
-
-            switch (faceLocal) {
-
-                case 0:
-                    if (hide.east && x === sx - 1) visible = false;
-                    break;
-
-                case 1:
-                    if (hide.west && x === 0) visible = false;
-                    break;
-
-                case 2:
-                    if (hide.top && y === sy - 1) visible = false;
-                    break;
-
-                case 3:
-                    break;
-
-                case 4:
-                    if (hide.south && z === sz - 1) visible = false;
-                    break;
-
-                case 5:
-                    if (hide.north && z === 0) visible = false;
-                    break;
-            }
-
-            const alpha = visible ? 255 : 0;
+            const hide_alpha = hidden_walls[faceID] ? 0 : 255;
+            const test_color = face.bounceCount > 0 ? 255 : defaultRGB[0];
 
             loader.faceColorCPU[faceID] = this.rgba_to_u32([
-                defaultRGB[0],
+                test_color,
                 defaultRGB[1],
                 defaultRGB[2],
-                alpha
+                hide_alpha
             ]);
         }
 
