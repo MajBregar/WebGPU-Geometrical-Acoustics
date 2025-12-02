@@ -1,5 +1,5 @@
 import { VoxelMeshBuilder } from "./voxel_mesh_builder.js";
-import { generateRoom, hideWalls, RoomBlock, MATERIAL_COEFFICIENTS } from "./room_generation.js";
+import { generateRoom, RoomBlock, MATERIAL_COEFFICIENTS } from "./room_generation.js";
 
 export class Loader {
 
@@ -7,42 +7,73 @@ export class Loader {
         this.device = device;
         this.settings = settings;
         this.initialized = false;
+        this.mesh_builder = null;
 
-        //geometry setup
+        //constants
+        this.vertexSize4Bytes = 7;
+
+        //shader code paths
+        this.rayTracingComputeShaderURL = "./core/shaders/ray_compute.wgsl";
+        this.shadowVertexShaderURL = "./core/shaders/shadow_vsh.wgsl";
+        this.vertexShaderURL = "./core/shaders/render_room_vsh.wgsl";
+        this.fragmentShaderURL = "./core/shaders/render_room_fsh.wgsl";
+
+        //geometry
         this.room_dimensions = settings.SIMULATION.room_dimensions;
         this.room_voxel_data = null;
         this.room_voxel_coefs = null;
-        this.faceColorBuffer = null;
-        this.faceColorCPU = null;   // Float16Array
         this.faceCount = 0;
+        this.indexCount = 0;
+        this.vertexCount = 0;
 
 
-        //voxelized ray tracing pipeline
-        this.rayTracingComputeShaderURL = "./core/shaders/ray_compute.wgsl";
+        //CPU buffers
+        this.faceColors_CPU_Write = null;
+        this.vertexData_CPU = null;
+        this.indexData_CPU = null;
+        this.emptyFaceStats_CPU = null;
+        this.faceToVoxelID_CPU = null;
+        this.voxelToFaceID_CPU = null;
+        this.hiddenWallFlags_CPU = null;
+
+
+
+        //GPU buffers
+        this.faceColors_GPU_Buffer = null;
+        this.vertexBuffer_GPU_Buffer = null;
+        this.indexBuffer_GPU_Buffer = null;
+        this.voxelCoefs_GPU_Buffer = null;
+        this.voxelToFaceID_GPU_Buffer = null;
+        this.faceStats_GPU_Buffer = null;
+        this.faceStats_GPU_ReadBack = null;
+
+        
+
+        //pipeline bind groups
+        this.rayBindGroup = null;
+
+        //pipelines
         this.rayPipeline = null;
-        this.rayBindGroup = null
-        this.voxelCoefBuffer = null;
-        this.voxelToSolidIDBuffer = null;
-        this.statsBuffer = null;
-        this.statsReadbackBuffer = null;
-        this.emptyStatsCPU = null;
-        this.solidIDToVoxel_CPU = null;
+
+
+
+
+        this.statsByteSize = 0;
+        this.faceStats = null;
+
         this.rayComputeUniformBuffer = null;
         this.rayComputeUniformBufferSize = 32 * 4;
+
         this.energyBandBuffer = null;
         this.energyBandCount = settings.SIMULATION.energy_bands;
         this.energyBandSizeBytes = 4;
+
         this.faceStats_u32 = null;
         this.faceStats_i32 = null;
-        this.faceStats = null;
 
-        //raster-vis geometry setup
-        this.vertexBuffer = null;
-        this.indexBuffer = null;
-        this.indexCount = 0;
+        // Hidden walls
 
-        //raster-vis shadow pass
-        this.shadowVertexShaderURL = "./core/shaders/shadow_vsh.wgsl";
+        // Shadow pass
         this.shadowPipeline = null;
         this.shadowBindGroup = null;
         this.shadowUniformBuffer = null;
@@ -52,9 +83,8 @@ export class Loader {
         this.shadowSampler = null;
         this.shadowMapFormat = "depth32float";
 
-        //raster-vis main pass
-        this.vertexShaderURL = "./core/shaders/render_room_vsh.wgsl";
-        this.fragmentShaderURL = "./core/shaders/render_room_fsh.wgsl";
+        // Main pass
+
         this.pipeline = null;
         this.bindGroup = null;
         this.uniformBuffer = null;
@@ -62,6 +92,7 @@ export class Loader {
         this.depthTexture = null;
         this.depthFormat = "depth32float";
     }
+
 
     async init() {
         const ray_csh = await this.loadShader(this.rayTracingComputeShaderURL);
@@ -97,7 +128,7 @@ export class Loader {
 
     reload(){
         const builder = this.mesh_builder;
-        const face_to_voxel = this.solidIDToVoxel_CPU;
+        const face_to_voxel = this.faceToVoxelID_CPU;
         const hide_walls = this.settings.SIMULATION.hide_walls;
         this.hiddenWallFlags_CPU = builder.buildHiddenFaceMask(face_to_voxel, hide_walls);
     }
@@ -105,14 +136,14 @@ export class Loader {
     
 
     async readFaceStats() {
-        const buf = this.statsReadbackBuffer;
+        const buf = this.faceStats_GPU_ReadBack;
         await buf.mapAsync(GPUMapMode.READ);
 
         const mapped = buf.getMappedRange();
         const u32 = new Uint32Array(mapped);
 
         const arr = this.faceStats;
-        const faceCount = this.solidCount;
+        const faceCount = this.faceCount;
 
         for (let f = 0; f < faceCount; f++) {
             arr[f].bounceCount    = u32[f * 2 + 0];
@@ -133,49 +164,47 @@ export class Loader {
 
     validPipelines() {
         if (!this.initialized) return false;
+
         if (!this.room_dimensions) return false;
         if (!this.room_voxel_data) return false;
         if (!this.room_voxel_coefs) return false;
-
-        // Ray tracing pipeline
+        if (!this.vertexBuffer_GPU_Buffer) return false;
+        if (!this.indexBuffer_GPU_Buffer) return false;
+        if (this.indexCount === 0) return false;
+        if (!this.vertexData_CPU) return false;
+        if (!this.indexData_CPU) return false;
+        if (!this.faceColors_GPU_Buffer) return false;
+        if (!this.faceColors_CPU_Write) return false;
+        if (this.faceCount === 0) return false;
+        if (!this.hiddenWallFlags_CPU) return false;
         if (!this.rayPipeline) return false;
         if (!this.rayBindGroup) return false;
-
-        if (!this.voxelCoefBuffer) return false;
-        if (!this.voxelToSolidIDBuffer) return false;
-
-        if (!this.statsBuffer) return false;
-        if (!this.statsReadbackBuffer) return false;
-        if (!this.emptyStatsCPU) return false;
-
+        if (!this.voxelCoefs_GPU_Buffer) return false;
+        if (!this.voxelToFaceID_GPU_Buffer) return false;
+        if (!this.faceStats_GPU_Buffer) return false;
+        if (!this.faceStats_GPU_ReadBack) return false;
+        if (!this.emptyFaceStats_CPU) return false;
         if (!this.rayComputeUniformBuffer) return false;
         if (!this.energyBandBuffer) return false;
         if (this.energyBandCount <= 0) return false;
         if (this.energyBandSizeBytes <= 0) return false;
-
-        // Raster-vis geometry
-        if (!this.vertexBuffer) return false;
-        if (!this.indexBuffer) return false;
-        if (this.indexCount === 0) return false;
-
-        // Shadow pipeline
+        if (!this.voxelToFaceID_CPU) return false;
+        if (!this.faceToVoxelID_CPU) return false;
+        if (!this.faceStats) return false;
         if (!this.shadowPipeline) return false;
         if (!this.shadowBindGroup) return false;
         if (!this.shadowUniformBuffer) return false;
-
         if (!this.shadowMap) return false;
         if (!this.shadowMapView) return false;
         if (!this.shadowSampler) return false;
-
-        // Main pipeline
         if (!this.pipeline) return false;
         if (!this.bindGroup) return false;
         if (!this.uniformBuffer) return false;
-
         if (!this.depthTexture) return false;
 
         return true;
     }
+
 
 
     createDepthTexture(width, height) {
@@ -272,36 +301,35 @@ export class Loader {
 
         this.hiddenWallFlags_CPU = builder.buildHiddenFaceMask(face_to_voxel, this.settings.SIMULATION.hide_walls);
 
-        this.voxelToSolidID_CPU = voxel_to_face;
-        this.solidIDToVoxel_CPU = face_to_voxel;
+        this.voxelToFaceID_CPU = voxel_to_face;
+        this.faceToVoxelID_CPU = face_to_voxel;
 
-        this.solidCount = face_to_voxel.length;
         const faceCount = face_to_voxel.length;
         this.faceCount = faceCount;
-        this.statsByteSize = faceCount * 8;
-        this.emptyStatsCPU = new ArrayBuffer(this.statsByteSize);
+        this.statsByteSize = face_to_voxel.length * 8;
+        this.emptyFaceStats_CPU = new ArrayBuffer(this.statsByteSize);
 
 
         //translation buffer
-        this.voxelToSolidIDBuffer = this.device.createBuffer({
+        this.voxelToFaceID_GPU_Buffer = this.device.createBuffer({
             size: voxel_to_face.byteLength,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
         this.device.queue.writeBuffer(
-            this.voxelToSolidIDBuffer,
+            this.voxelToFaceID_GPU_Buffer,
             0,
             voxel_to_face.buffer,
             voxel_to_face.byteOffset,
             voxel_to_face.byteLength
         );
 
-        this.statsBuffer = this.device.createBuffer({
+        this.faceStats_GPU_Buffer = this.device.createBuffer({
             size: this.statsByteSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         });
 
         //readback buffer
-        this.statsReadbackBuffer = this.device.createBuffer({
+        this.faceStats_GPU_ReadBack = this.device.createBuffer({
             size: this.statsByteSize,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
         });
@@ -319,9 +347,9 @@ export class Loader {
 
     updateFaceColorBuffer() {
         this.device.queue.writeBuffer(
-            this.faceColorBuffer,
+            this.faceColors_GPU_Buffer,
             0,
-            this.faceColorCPU
+            this.faceColors_CPU_Write
         );
     }
 
@@ -331,9 +359,9 @@ export class Loader {
         const count = this.faceCount;        
         const bytes = count * 4;
 
-        this.faceColorCPU = new Uint32Array(count);
+        this.faceColors_CPU_Write = new Uint32Array(count);
         
-        this.faceColorBuffer = this.device.createBuffer({
+        this.faceColors_GPU_Buffer = this.device.createBuffer({
             size: bytes,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
@@ -344,39 +372,37 @@ export class Loader {
         const device = this.device;
         const builder = this.mesh_builder;
 
-        const face_to_voxel = this.solidIDToVoxel_CPU;
-        const voxel_to_face = this.voxelToSolidID_CPU;
-        const mesh = builder.buildStaticMesh(face_to_voxel, voxel_to_face);
+        const face_to_voxel = this.faceToVoxelID_CPU;
+        const voxel_to_face = this.voxelToFaceID_CPU;
+        const mesh = builder.buildStaticMesh(face_to_voxel, voxel_to_face, this.vertexSize4Bytes);
 
 
         // Store CPU copies so we can modify vertex colors later:
-        this.vertexDataCPU = mesh.vertices.slice();
-        this.indexDataCPU  = mesh.indices.slice();
-        this.faceVertexStart = mesh.faceVertexStart;
+        this.vertexData_CPU = mesh.vertices.slice();
+        this.indexData_CPU  = mesh.indices.slice();
         
-        this.vertexStride = 7;
-        this.vertexCount  = this.vertexDataCPU.length / this.vertexStride;
+        this.vertexCount = this.vertexData_CPU.length / this.vertexSize4Bytes;
 
-        this.vertexBuffer = device.createBuffer({
-            size: this.vertexDataCPU.byteLength,
+        this.vertexBuffer_GPU_Buffer = device.createBuffer({
+            size: this.vertexData_CPU.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
 
         device.queue.writeBuffer(
-            this.vertexBuffer,
+            this.vertexBuffer_GPU_Buffer,
             0,
-            this.vertexDataCPU
+            this.vertexData_CPU
         );
 
-        this.indexBuffer = device.createBuffer({
-            size: this.indexDataCPU.byteLength,
+        this.indexBuffer_GPU_Buffer = device.createBuffer({
+            size: this.indexData_CPU.byteLength,
             usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST
         });
 
         device.queue.writeBuffer(
-            this.indexBuffer,
+            this.indexBuffer_GPU_Buffer,
             0,
-            this.indexDataCPU
+            this.indexData_CPU
         );
 
 
@@ -511,13 +537,13 @@ export class Loader {
     }
 
     createVoxelCoefBuffer() {
-        this.voxelCoefBuffer = this.device.createBuffer({
+        this.voxelCoefs_GPU_Buffer = this.device.createBuffer({
             size: this.room_voxel_coefs.byteLength,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         this.device.queue.writeBuffer(
-            this.voxelCoefBuffer,
+            this.voxelCoefs_GPU_Buffer,
             0,
             this.room_voxel_coefs.buffer,
             this.room_voxel_coefs.byteOffset,
@@ -569,7 +595,7 @@ export class Loader {
                 entryPoint: "vs_main",
                 buffers: [
                     {
-                        arrayStride: 7 * 4,
+                        arrayStride: this.vertexSize4Bytes * 4,
                         attributes: [
                             { shaderLocation: 0, offset: 0,  format: "float32x3" },
                             { shaderLocation: 1, offset: 12, format: "float32x3" },
@@ -600,7 +626,7 @@ export class Loader {
                 { binding: 0, resource: { buffer: this.uniformBuffer } },
                 { binding: 1, resource: this.shadowMapView },
                 { binding: 2, resource: this.shadowSampler },
-                { binding: 3, resource: { buffer: this.faceColorBuffer } }
+                { binding: 3, resource: { buffer: this.faceColors_GPU_Buffer } }
             ]
         });
     }
@@ -637,7 +663,7 @@ export class Loader {
                 entryPoint: "vs_shadow_main",
                 buffers: [
                     {
-                        arrayStride: 7 * 4,
+                        arrayStride: this.vertexSize4Bytes * 4,
                         attributes: [
                             { shaderLocation: 0, offset: 0,  format: "float32x3" },
                             { shaderLocation: 1, offset: 12, format: "float32x3" },
@@ -660,7 +686,7 @@ export class Loader {
             layout: shadowBindGroupLayout,
             entries: [
                 { binding: 0, resource: { buffer: this.shadowUniformBuffer } },
-                { binding: 1, resource: { buffer: this.faceColorBuffer } }            
+                { binding: 1, resource: { buffer: this.faceColors_GPU_Buffer } }            
             ]
         });
     }
@@ -733,19 +759,19 @@ export class Loader {
                 // 1 - voxel absorption coefficients
                 {
                     binding: 1,
-                    resource: { buffer: this.voxelCoefBuffer }
+                    resource: { buffer: this.voxelCoefs_GPU_Buffer }
                 },
 
                 // 2 - voxel -> solid ID table
                 {
                     binding: 2,
-                    resource: { buffer: this.voxelToSolidIDBuffer }
+                    resource: { buffer: this.voxelToFaceID_GPU_Buffer }
                 },
 
                 // 3 - face stats (accumulation output)
                 {
                     binding: 3,
-                    resource: { buffer: this.statsBuffer }
+                    resource: { buffer: this.faceStats_GPU_Buffer }
                 },
 
                 // 4 - energy bands

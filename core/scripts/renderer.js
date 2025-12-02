@@ -135,7 +135,7 @@ export class Renderer {
         const sim = settings.SIMULATION;
         const ray_uniforms = {
             room_dims : type_uvec3(sim.room_dimensions),
-            max_bounce : type_u32(sim.max_bounces),
+            max_steps : type_u32(sim.max_ray_steps),
 
             ray_origin : type_vec3(sim.emitter_position),
             voxel_size_meters : type_float(sim.voxel_scale_meters),
@@ -143,6 +143,7 @@ export class Renderer {
             ray_count : type_u32(sim.ray_count),
             energy_bands : type_u32(sim.energy_bands),
             energy_cutoff : type_float(sim.ray_energy_min),
+            face_count : type_u32(loader.faceCount)
         }
 
         loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
@@ -158,24 +159,18 @@ export class Renderer {
 
     updateColors(face_data) {
         const loader = this.loader;
-        const hide = this.settings.SIMULATION.hide_walls;
-        const face_to_voxel = loader.solidIDToVoxel_CPU;
-
-        const [sx, sy, sz] = loader.room_dimensions;
-
         const hidden_walls = loader.hiddenWallFlags_CPU;
 
         const defaultRGB = [120, 120, 120];
         const faceCount = loader.faceCount;
 
-        
         for (let faceID = 0; faceID < faceCount; faceID++) {
             const face = face_data[faceID];
 
             const hide_alpha = hidden_walls[faceID] ? 0 : 255;
-            const test_color = face.bounceCount > 0 ? 255 : defaultRGB[0];
+            const test_color = face.bounceCount > 0 ? face.bounceCount : 0;
 
-            loader.faceColorCPU[faceID] = this.rgba_to_u32([
+            loader.faceColors_CPU_Write[faceID] = this.rgba_to_u32([
                 test_color,
                 defaultRGB[1],
                 defaultRGB[2],
@@ -242,9 +237,9 @@ export class Renderer {
         const encoder = device.createCommandEncoder();
 
         device.queue.writeBuffer(
-            loader.statsBuffer,
+            loader.faceStats_GPU_Buffer,
             0,
-            loader.emptyStatsCPU
+            loader.emptyFaceStats_CPU
         );
 
 
@@ -258,9 +253,9 @@ export class Renderer {
         computePass.end();
         
         encoder.copyBufferToBuffer(
-            loader.statsBuffer,
+            loader.faceStats_GPU_Buffer,
             0,
-            loader.statsReadbackBuffer,
+            loader.faceStats_GPU_ReadBack,
             0,
             loader.statsByteSize
         );
@@ -269,15 +264,38 @@ export class Renderer {
 
         const faces = await loader.readFaceStats();
         
-        let bounceSum = 0;
-        let energySum = 0;
-        faces.forEach(e => {
-            const absorbedEnergy = e.absorbedEnergy;
-            const bounceCount = e.bounceCount;
-            bounceSum += bounceCount;
-            energySum += absorbedEnergy;
-        });
-        console.log("BS:", bounceSum, "ES:", energySum);
+
+        function decodePos(code, roomSize) {
+            const qx =  code         & 0x3FF;
+            const qy = (code >> 10) & 0x3FF;
+            const qz = (code >> 20) & 0x3FF; 
+
+            // convert back to float voxel space
+            const x = (qx / 1023) * roomSize[0];
+            const y = (qy / 1023) * roomSize[1];
+            const z = (qz / 1023) * roomSize[2];
+
+            return { x, y, z };
+        }
+
+        //console.log("RAY POSITIONS");
+        const positions_debug = []
+        var test = 0;
+        for (let i = 0; i < faces.length; i++){
+            const enc = faces[i].bounceCount;
+            test += enc;            
+            // if (enc <= 0) break;
+
+            // const enc_hit = faces[i].absorbedEnergy;
+
+            // const dec = decodePos(enc, loader.room_dimensions);
+            // const dec_hit = decodePos(enc_hit, loader.room_dimensions);
+
+            // positions_debug.push({pos: [dec.x, dec.y, dec.z], hit: [dec_hit.x, dec_hit.y, dec_hit.z]});
+        }
+        //console.log(positions_debug);
+        console.log(test);
+        
         
         this.updateColors(faces);
         
@@ -300,8 +318,8 @@ export class Renderer {
 
         shadowPass.setPipeline(loader.shadowPipeline);
         shadowPass.setBindGroup(0, loader.shadowBindGroup);
-        shadowPass.setVertexBuffer(0, loader.vertexBuffer);
-        shadowPass.setIndexBuffer(loader.indexBuffer, "uint32");
+        shadowPass.setVertexBuffer(0, loader.vertexBuffer_GPU_Buffer);
+        shadowPass.setIndexBuffer(loader.indexBuffer_GPU_Buffer, "uint32");
         shadowPass.drawIndexed(loader.indexCount);
         shadowPass.end();
 
@@ -339,8 +357,8 @@ export class Renderer {
 
         pass.setPipeline(loader.pipeline);
         pass.setBindGroup(0, loader.bindGroup);
-        pass.setVertexBuffer(0, loader.vertexBuffer);
-        pass.setIndexBuffer(loader.indexBuffer, "uint32");
+        pass.setVertexBuffer(0, loader.vertexBuffer_GPU_Buffer);
+        pass.setIndexBuffer(loader.indexBuffer_GPU_Buffer, "uint32");
         pass.drawIndexed(loader.indexCount);
         pass.end();
 

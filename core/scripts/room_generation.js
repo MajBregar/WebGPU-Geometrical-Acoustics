@@ -50,7 +50,7 @@ export function generateRoom(room_dimensions) {
       (z === sz - 1) ||
       (x === sx - 1);
 
-    const isMiddleWall = (x === MID_WALL_X);
+    const isMiddleWall = false;//(x === MID_WALL_X);
 
     if (isFloor) {
       setVoxelCell(voxelData, cellID, RoomBlock.WALL);
@@ -78,58 +78,3 @@ export function generateRoom(room_dimensions) {
   return voxelData;
 }
 
-
-export function hideWalls(voxel_data, hide_walls_flags, room_dimensions) {
-    const sx = room_dimensions[0];
-    const sy = room_dimensions[1];
-    const sz = room_dimensions[2];
-
-    const filtered_data = new Uint8Array(voxel_data);
-
-    function idx(x, y, z) {
-        return (z * sy * sx + y * sx + x) * 4;
-    }
-
-    const hideTop   = hide_walls_flags.top;
-    const hideNorth = hide_walls_flags.north;
-    const hideSouth = hide_walls_flags.south;
-    const hideEast  = hide_walls_flags.east;
-    const hideWest  = hide_walls_flags.west;
-
-    for (let z = 0; z < sz; z++)
-    for (let y = 0; y < sy; y++)
-    for (let x = 0; x < sx; x++) {
-
-        const id = idx(x, y, z);
-
-        const alpha = voxel_data[id + 3];
-        if (alpha === 0) continue;
-
-        if (hideTop && y === sy - 1) {
-            filtered_data[id + 3] = 0;
-            continue;
-        }
-
-        if (hideNorth && z === 0) {
-            filtered_data[id + 3] = 0;
-            continue;
-        }
-
-        if (hideSouth && z === sz - 1) {
-            filtered_data[id + 3] = 0;
-            continue;
-        }
-
-        if (hideWest && x === 0) {
-            filtered_data[id + 3] = 0;
-            continue;
-        }
-
-        if (hideEast && x === sx - 1) {
-            filtered_data[id + 3] = 0;
-            continue;
-        }
-    }
-
-    return filtered_data;
-}

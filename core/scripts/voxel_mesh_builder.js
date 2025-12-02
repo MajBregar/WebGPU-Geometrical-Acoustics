@@ -145,13 +145,12 @@ export class VoxelMeshBuilder {
 
 
 
-    buildStaticMesh(face_to_voxel, voxel_to_face) {
+    buildStaticMesh(face_to_voxel, voxel_to_face, vertexSize) {
         const [sx, sy, sz] = this.dimensions;
 
-        const stride = 7;
+        const stride = vertexSize;
         const vertices = [];
         const indices = [];
-        const faceVertexStart = new Array(face_to_voxel.length);
 
         let vertexCount = 0;
         let indexOffset = 0;
@@ -182,9 +181,6 @@ export class VoxelMeshBuilder {
             // face definition
             const f = this.faces[faceLocal];
             const N = f.dir;
-
-            // record where this face’s vertices start
-            faceVertexStart[faceIndex] = vertexCount;
 
             // 4 quad vertices
             for (let c = 0; c < 4; c++) {
@@ -227,8 +223,7 @@ export class VoxelMeshBuilder {
         return {
             vertices: vertexArray,
             indices: new Uint32Array(indices),
-            indexCount: indices.length,
-            faceVertexStart
+            indexCount: indices.length
         };
     }
 
