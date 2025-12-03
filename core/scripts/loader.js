@@ -35,6 +35,7 @@ export class Loader {
         this.faceToVoxelID_CPU = null;
         this.voxelToFaceID_CPU = null;
         this.hiddenWallFlags_CPU = null;
+        this.energyBands_CPU = null;
 
 
 
@@ -239,6 +240,8 @@ export class Loader {
     }
 
     createEnergyBandBuffer() {
+        this.energyBands_CPU = new Float32Array(this.energyBandCount);
+        
         this.energyBandBuffer = this.device.createBuffer({
             size: this.energyBandCount * this.energyBandSizeBytes,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST

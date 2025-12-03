@@ -63,17 +63,25 @@ function setupDebugUI() {
     const s1 = document.getElementById("slider1");
     const s2 = document.getElementById("slider2");
     const s3 = document.getElementById("slider3");
+    const s1val = document.getElementById("s1val");
+    const s2val = document.getElementById("s2val");
+    const s3val = document.getElementById("s3val");
 
     function updateSliders() {
         const x = Number(s1.value);
         const y = Number(s2.value);
         const z = Number(s3.value);
+        s1val.textContent = x;
+        s2val.textContent = y;
+        s3val.textContent = z;
 
         //settings.LIGHTING.direction = [x, y, z];
         //settings.LIGHTING.shadow_map.normal_bias = x;
         //settings.LIGHTING.shadow_map.bias = y;
         //settings.LIGHTING.ambient_light = x;
         //settings.LIGHTING.intensity = y;
+
+        //settings.SIMULATION.emitter_position = [x, y, z];
 
     }
 

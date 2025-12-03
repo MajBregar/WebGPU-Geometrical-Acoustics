@@ -159,19 +159,35 @@ export class Renderer {
 
     updateColors(face_data) {
         const loader = this.loader;
+        const settings = this.settings;
         const hidden_walls = loader.hiddenWallFlags_CPU;
 
         const defaultRGB = [120, 120, 120];
         const faceCount = loader.faceCount;
+        const rayCount = settings.SIMULATION.ray_count;
+        const vis_coef = 10000.0;
+
+        var starting_energy = 0.0;
+        for (let i = 0; i < loader.energyBands_CPU.length; i++){
+            starting_energy += loader.energyBands_CPU[i];
+        }
+        starting_energy = starting_energy * 1000000;
 
         for (let faceID = 0; faceID < faceCount; faceID++) {
             const face = face_data[faceID];
 
             const hide_alpha = hidden_walls[faceID] ? 0 : 255;
-            const test_color = face.bounceCount > 0 ? face.bounceCount : 0;
 
+            const enery_absorbed = face.absorbedEnergy;
+            const energy_color = (enery_absorbed / starting_energy) * vis_coef * 255;
+            //console.log(enery_absorbed, starting_energy);
+
+            const bounces = face.bounceCount;
+            const bounce_color = (bounces / 10) * 255;
+            
+            
             loader.faceColors_CPU_Write[faceID] = this.rgba_to_u32([
-                test_color,
+                energy_color >= 255 ? 255 : energy_color,
                 defaultRGB[1],
                 defaultRGB[2],
                 hide_alpha
@@ -185,9 +201,9 @@ export class Renderer {
     generateEnergyBandBufferData() {
         const sim = this.settings.SIMULATION;
         const loader = this.loader;
-        const energy = new Float32Array(loader.energyBandCount);
+        const energy = loader.energyBands_CPU;
         for (let i = 0; i < energy.length; i++){
-            energy[i] = i + 1;
+            energy[i] = 1.0;
         }
         this.device.queue.writeBuffer(loader.energyBandBuffer, 0, energy);
     }
@@ -294,7 +310,7 @@ export class Renderer {
             // positions_debug.push({pos: [dec.x, dec.y, dec.z], hit: [dec_hit.x, dec_hit.y, dec_hit.z]});
         }
         //console.log(positions_debug);
-        console.log(test);
+        //console.log(test);
         
         
         this.updateColors(faces);
