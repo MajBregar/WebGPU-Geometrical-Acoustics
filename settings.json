@@ -28,12 +28,12 @@
 
         "shadow_map": {
             "map_resolution": 2048,
-            "bias": 0.0033,
-            "normal_bias": 0.3913,
-            "near": 100.0,
-            "far": 500.0,
-            "half": 500.0,
-            "distance" : 300
+            "bias": 0.00002,
+            "normal_bias": 0.04,
+            "near": 20.0,
+            "far": 120.0,
+            "half": 60.0,
+            "distance" : 80
         }
     },
 

@@ -2,17 +2,16 @@
 A simple WebGPU-based simulation of geometrical acoustics. 
 
 
-
-
-# PLAN FOR RAYTRACING PIPELINE
-
-- make buffer of every voxel in room that stores Voxel(material_coef), the position of the voxel in the array should be translatable to the voxel boundries
-- make a translation buffer of every voxel to a compressed voxel buffer index - translation\[voxelnd\] = compressedInd
-- use compressedInd * 6 + FaceID to get position of the readback buffer data and ATOMIC WRITE in the absorption data
-- after ray tracing step send the readback buffer data to CPU -> decode into face colors
-
-
 # TODO
+- add sphere models for emitter and listener, hook them up to pipeline, expose their position and direction in compute shader
+- add ray soaking into listener (ignore dir for now), hook up listener energy output to CPU
+- add graph for input energies and listener output energies
 
-- optimize face buffer by culling faces between 2 voxels - VERY HIGH PRIORITY
-- clean up disgusting code
+- switch to ID based voxel mapping - voxels should only hold voxelTypeID, add propery translation table as input to shader
+- READ PAPER MORE IN DEPTH - make sound rays physically accurate
+- implement sound transform into energy bands as input vectors
+- hook up vector input to compute shader
+- implement sound detransform from listener energy bands into sound
+
+- IF HAVE TIME - implement head transfer function for listener
+
