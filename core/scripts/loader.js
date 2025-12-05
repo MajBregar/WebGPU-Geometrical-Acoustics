@@ -25,6 +25,8 @@ export class Loader {
         this.faceCount = 0;
         this.indexCount = 0;
         this.vertexCount = 0;
+        this.sphereIndexCount = 0;
+
 
 
         //CPU buffers
@@ -36,8 +38,9 @@ export class Loader {
         this.voxelToFaceID_CPU = null;
         this.hiddenWallFlags_CPU = null;
         this.energyBands_CPU = null;
-
-
+        this.sphereInstanceBuffer_CPU_Write = null;
+        this.listenerBands_CPU = null;
+        this.listenerClear_CPU = null;
 
         //GPU buffers
         this.faceColors_GPU_Buffer = null;
@@ -47,8 +50,14 @@ export class Loader {
         this.voxelToFaceID_GPU_Buffer = null;
         this.faceStats_GPU_Buffer = null;
         this.faceStats_GPU_ReadBack = null;
+        this.sphereInstanceBuffer_GPU_Buffer = null;
+        this.dummyInstanceBuffer_GPU_Buffer = null;
+        this.sphereVertexBuffer_GPU_Buffer = null;
+        this.sphereIndexBuffer_GPU_Buffer = null;
+        this.listener_GPU_Buffer = null;
+        this.listener_GPU_ReadBack = null;
+        this.listenerClear_GPU_Buffer = null;
 
-        
 
         //pipeline bind groups
         this.rayBindGroup = null;
@@ -120,6 +129,7 @@ export class Loader {
         this.createFaceColorBuffer();
         this.createSphereBuffers();
         this.createInstanceBuffer();
+        this.createListenerBuffers();
 
 
         this.createRayComputePipeline(ray_csh);
@@ -156,6 +166,25 @@ export class Loader {
         buf.unmap();
         return arr;
     }
+
+    async readListenerBands() {
+        const buf = this.listener_GPU_ReadBack;
+        const count = this.energyBandCount;
+
+        await buf.mapAsync(GPUMapMode.READ);
+        const mapped = buf.getMappedRange();
+        const u32 = new Uint32Array(mapped);
+
+        const out = this.listenerBands_CPU;
+
+        for (let i = 0; i < count; i++) {
+            out[i] = u32[i];
+        }
+
+        buf.unmap();
+        return out;
+    }
+
 
 
 
@@ -348,6 +377,37 @@ export class Loader {
             };
         }
     }
+
+    createListenerBuffers() {
+        const device = this.device;
+        const count = this.energyBandCount;
+        const byteSize = count * 4;
+
+        this.listener_GPU_Buffer = device.createBuffer({
+            size: byteSize,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+        });
+
+
+        this.listener_GPU_ReadBack = device.createBuffer({
+            size: byteSize,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+        });
+
+        this.listenerBands_CPU = new Uint32Array(count);
+
+
+        this.listenerClear_CPU = new Uint32Array(count);
+
+        this.listenerClear_GPU_Buffer = device.createBuffer({
+            size: byteSize,
+            usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+        });
+
+        device.queue.writeBuffer(this.listenerClear_GPU_Buffer, 0, this.listenerClear_CPU);
+
+    }
+
 
 
     updateFaceColorBuffer() {
@@ -832,11 +892,17 @@ export class Loader {
                     buffer: { type: "storage" }
                 },
 
-                // 4: energy bands
+                // 4: input energy bands
                 {
                     binding: 4,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "read-only-storage" }
+                },
+                // 5: output energy bands
+                {
+                    binding: 5,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: "storage" }
                 }
             ]
         });
@@ -880,10 +946,15 @@ export class Loader {
                     resource: { buffer: this.faceStats_GPU_Buffer }
                 },
 
-                // 4 - energy bands
+                // 4 - input energy bands
                 {
                     binding: 4,
                     resource: { buffer: this.energyBandBuffer }
+                },
+                // 5 - output energy bands
+                { 
+                    binding: 5, 
+                    resource: { buffer: this.listener_GPU_Buffer } 
                 }
             ]
         });

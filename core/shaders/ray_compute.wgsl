@@ -13,7 +13,10 @@ struct RayUniforms {
     rayCount    : u32,
     energyBandCount : u32,
     energyCutoff : f32, 
-    faceCount : u32
+    faceCount : u32,
+
+    listenerPos : vec3<f32>,
+    listenerRadius : f32
 };
 
 const MAX_BANDS: u32 = 10;
@@ -33,6 +36,10 @@ var<storage, read_write> stats : array<FaceStats>;
 
 @group(0) @binding(4)
 var<storage, read> initialEnergyBands : array<f32>;
+
+@group(0) @binding(5)
+var<storage, read_write> listenerEnergyBands : array<atomic<u32>>;
+
 
 
 fn sign_float(x : f32) -> f32 {
@@ -245,5 +252,10 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let dir = generate_direction_on_sphere(rayID, uni.rayCount);
     let origin = uni.rayOrigin + dir * 1e-4;
     let result = trace_ray(origin, dir);
+
+    //test
+    for (var i : u32 = 0u; i < uni.energyBandCount; i++) {
+        atomicAdd(&listenerEnergyBands[i], 1u);
+    }
 
 }

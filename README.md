@@ -3,7 +3,6 @@ A simple WebGPU-based simulation of geometrical acoustics.
 
 
 # TODO
-- add sphere models for emitter and listener, hook them up to pipeline, expose their position and direction in compute shader
 - add ray soaking into listener (ignore dir for now), hook up listener energy output to CPU
 - add graph for input energies and listener output energies
 

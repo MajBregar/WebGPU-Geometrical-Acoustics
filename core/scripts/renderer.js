@@ -143,7 +143,10 @@ export class Renderer {
             ray_count : type_u32(sim.ray_count),
             energy_bands : type_u32(sim.energy_bands),
             energy_cutoff : type_float(sim.ray_energy_min),
-            face_count : type_u32(loader.faceCount)
+            face_count : type_u32(loader.faceCount),
+
+            listener_pos: type_vec3(sim.listener_position),
+            listener_radius : type_float(sim.listener_radius)
         }
 
         loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
@@ -228,8 +231,6 @@ export class Renderer {
 
 
 
-
-
     requestReload(){
         this.reload = true;
     }
@@ -276,13 +277,20 @@ export class Renderer {
             loader.emptyFaceStats_CPU
         );
 
+        encoder.copyBufferToBuffer(
+            loader.listenerClear_GPU_Buffer,
+            0,
+            loader.listener_GPU_Buffer,
+            0,
+            loader.energyBandCount * 4
+        );
+
 
         const computePass = encoder.beginComputePass();
         computePass.setPipeline(loader.rayPipeline);
-
         computePass.setBindGroup(0, loader.rayBindGroup);
-        const workgroups = Math.ceil(settings.SIMULATION.ray_count / 64);
 
+        const workgroups = Math.ceil(settings.SIMULATION.ray_count / 64);
         computePass.dispatchWorkgroups(workgroups);
         computePass.end();
         
@@ -294,41 +302,57 @@ export class Renderer {
             loader.statsByteSize
         );
 
+        encoder.copyBufferToBuffer(
+            loader.listener_GPU_Buffer,
+            0,
+            loader.listener_GPU_ReadBack,
+            0,
+            loader.energyBandCount * 4
+        );
+
         device.queue.submit([encoder.finish()]);
 
+
         const faces = await loader.readFaceStats();
+        const listenerBands = await loader.readListenerBands();
+
+        // let les = 0;
+        // for (let i = 0; i < loader.energyBandCount; i++) {
+        //     les += listenerBands[i];
+        // }
+        // console.log(les);
         
+        
+        // function decodePos(code, roomSize) {
+        //     const qx =  code         & 0x3FF;
+        //     const qy = (code >> 10) & 0x3FF;
+        //     const qz = (code >> 20) & 0x3FF; 
 
-        function decodePos(code, roomSize) {
-            const qx =  code         & 0x3FF;
-            const qy = (code >> 10) & 0x3FF;
-            const qz = (code >> 20) & 0x3FF; 
+        //     // convert back to float voxel space
+        //     const x = (qx / 1023) * roomSize[0];
+        //     const y = (qy / 1023) * roomSize[1];
+        //     const z = (qz / 1023) * roomSize[2];
 
-            // convert back to float voxel space
-            const x = (qx / 1023) * roomSize[0];
-            const y = (qy / 1023) * roomSize[1];
-            const z = (qz / 1023) * roomSize[2];
+        //     return { x, y, z };
+        // }
 
-            return { x, y, z };
-        }
+        // //console.log("RAY POSITIONS");
+        // const positions_debug = []
+        // var test = 0;
+        // for (let i = 0; i < faces.length; i++){
+        //     const enc = faces[i].bounceCount;
+        //     test += enc;            
+        //     // if (enc <= 0) break;
 
-        //console.log("RAY POSITIONS");
-        const positions_debug = []
-        var test = 0;
-        for (let i = 0; i < faces.length; i++){
-            const enc = faces[i].bounceCount;
-            test += enc;            
-            // if (enc <= 0) break;
+        //     // const enc_hit = faces[i].absorbedEnergy;
 
-            // const enc_hit = faces[i].absorbedEnergy;
+        //     // const dec = decodePos(enc, loader.room_dimensions);
+        //     // const dec_hit = decodePos(enc_hit, loader.room_dimensions);
 
-            // const dec = decodePos(enc, loader.room_dimensions);
-            // const dec_hit = decodePos(enc_hit, loader.room_dimensions);
-
-            // positions_debug.push({pos: [dec.x, dec.y, dec.z], hit: [dec_hit.x, dec_hit.y, dec_hit.z]});
-        }
-        //console.log(positions_debug);
-        //console.log(test);
+        //     // positions_debug.push({pos: [dec.x, dec.y, dec.z], hit: [dec_hit.x, dec_hit.y, dec_hit.z]});
+        // }
+        // //console.log(positions_debug);
+        // //console.log(test);
         
         
         this.updateColors(faces);
