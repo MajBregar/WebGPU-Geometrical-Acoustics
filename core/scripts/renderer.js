@@ -197,6 +197,24 @@ export class Renderer {
         loader.updateFaceColorBuffer();
     }
 
+    updateSpherePositions(){
+        const sim = this.settings.SIMULATION;
+        const loader = this.loader;
+        const emitter_pos = sim.emitter_position;
+        const listener_pos = sim.listener_position;
+        const instance_buffer_cpu = this.loader.sphereInstanceBuffer_CPU_Write;
+
+        instance_buffer_cpu[12] = emitter_pos[0];
+        instance_buffer_cpu[13] = emitter_pos[1];
+        instance_buffer_cpu[14] = emitter_pos[2];
+
+        instance_buffer_cpu[29] = listener_pos[0];
+        instance_buffer_cpu[30] = listener_pos[1];
+        instance_buffer_cpu[31] = listener_pos[2];
+        
+        this.device.queue.writeBuffer(loader.sphereInstanceBuffer_GPU_Buffer, 0, instance_buffer_cpu);
+    }
+
 
     generateEnergyBandBufferData() {
         const sim = this.settings.SIMULATION;
@@ -314,6 +332,7 @@ export class Renderer {
         
         
         this.updateColors(faces);
+        this.updateSpherePositions();
         
 
         // ----------------------------------------------------
@@ -334,10 +353,19 @@ export class Renderer {
 
         shadowPass.setPipeline(loader.shadowPipeline);
         shadowPass.setBindGroup(0, loader.shadowBindGroup);
+
         shadowPass.setVertexBuffer(0, loader.vertexBuffer_GPU_Buffer);
+        shadowPass.setVertexBuffer(1, loader.dummyInstanceBuffer_GPU_Buffer);
         shadowPass.setIndexBuffer(loader.indexBuffer_GPU_Buffer, "uint32");
         shadowPass.drawIndexed(loader.indexCount);
+
+        shadowPass.setVertexBuffer(0, loader.sphereVertexBuffer_GPU_Buffer);
+        shadowPass.setVertexBuffer(1, loader.sphereInstanceBuffer_GPU_Buffer);
+        shadowPass.setIndexBuffer(loader.sphereIndexBuffer_GPU_Buffer, "uint32");
+        shadowPass.drawIndexed(loader.sphereIndexCount, 2);
+
         shadowPass.end();
+
 
         // ----------------------------------------------------
         // PASS 2: MAIN FORWARD RENDERING
@@ -373,10 +401,19 @@ export class Renderer {
 
         pass.setPipeline(loader.pipeline);
         pass.setBindGroup(0, loader.bindGroup);
+
         pass.setVertexBuffer(0, loader.vertexBuffer_GPU_Buffer);
+        pass.setVertexBuffer(1, loader.dummyInstanceBuffer_GPU_Buffer);
         pass.setIndexBuffer(loader.indexBuffer_GPU_Buffer, "uint32");
         pass.drawIndexed(loader.indexCount);
+
+        pass.setVertexBuffer(0, loader.sphereVertexBuffer_GPU_Buffer);
+        pass.setVertexBuffer(1, loader.sphereInstanceBuffer_GPU_Buffer);
+        pass.setIndexBuffer(loader.sphereIndexBuffer_GPU_Buffer, "uint32");
+        pass.drawIndexed(loader.sphereIndexCount, 2);
+
         pass.end();
+
 
         device.queue.submit([encoder2.finish()]);
     }

@@ -62,6 +62,54 @@ export class VoxelMeshBuilder {
         ];
     }
 
+    createSphereMesh(radius = 1, segments = 32, rings = 16) {
+        const vertices = [];
+        const indices = [];
+
+        for (let y = 0; y <= rings; y++) {
+            const v = y / rings;
+            const theta = v * Math.PI;
+
+            for (let x = 0; x <= segments; x++) {
+                const u = x / segments;
+                const phi = u * 2 * Math.PI;
+
+                const px = Math.sin(theta) * Math.cos(phi);
+                const py = Math.cos(theta);
+                const pz = Math.sin(theta) * Math.sin(phi);
+
+                const nx = px;
+                const ny = py;
+                const nz = pz;
+
+                vertices.push(
+                    px * radius, py * radius, pz * radius,   // position (3 floats)
+                    nx, ny, nz,                              // normal   (3 floats)
+                    0xFFFFFFFF                               // faceID for spheres (uint32)
+                );
+            }
+        }
+
+        for (let y = 0; y < rings; y++) {
+            for (let x = 0; x < segments; x++) {
+                const i0 = y * (segments + 1) + x;
+                const i1 = i0 + 1;
+                const i2 = i0 + segments + 1;
+                const i3 = i2 + 1;
+
+                // two triangles per quad
+                indices.push(i0, i2, i1);
+                indices.push(i1, i2, i3);
+            }
+        }
+
+        return {
+            vertexData: new Float32Array(vertices),
+            indexData: new Uint32Array(indices)
+        };
+    }
+
+
     buildFaceArrayFromVoxels(voxels) {
         const [sx, sy, sz] = this.dimensions;
 

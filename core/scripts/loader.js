@@ -118,6 +118,8 @@ export class Loader {
 
         this.createMeshAndBuffers();
         this.createFaceColorBuffer();
+        this.createSphereBuffers();
+        this.createInstanceBuffer();
 
 
         this.createRayComputePipeline(ray_csh);
@@ -554,7 +556,84 @@ export class Loader {
         );
     }
 
+    createSphereBuffers() {
+        const device = this.device;
+        const mesh = this.mesh_builder.createSphereMesh(1.0);
 
+        this.sphereVertexBuffer_GPU_Buffer = device.createBuffer({
+            size: mesh.vertexData.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(this.sphereVertexBuffer_GPU_Buffer, 0, mesh.vertexData);
+
+        this.sphereIndexBuffer_GPU_Buffer = device.createBuffer({
+            size: mesh.indexData.byteLength,
+            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(this.sphereIndexBuffer_GPU_Buffer, 0, mesh.indexData);
+
+        this.sphereIndexCount = mesh.indexData.length;
+    }
+
+    createInstanceBuffer() {
+        const sim = this.settings.SIMULATION;
+        const p_em = sim.emitter_position;
+        const p_li = sim.listener_position;
+
+        const emitterMatrix = new Float32Array([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            p_em[0], p_em[1], p_em[2], 1
+        ]);
+
+
+        const listenerMatrix = new Float32Array([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            p_li[0], p_li[1], p_li[2], 1
+        ]);
+
+        const device = this.device;
+        const bufferSize = 2 * 80;
+
+        const array = new Float32Array(bufferSize / 4);
+
+        function writeInstance(baseIndex, mat, sphereID) {
+            for (let i = 0; i < 16; i++) {
+                array[baseIndex + i] = mat[i];
+            }
+            const idOffset = baseIndex + 16;
+            new Uint32Array(array.buffer)[idOffset] = sphereID;
+        }
+
+        writeInstance(0, emitterMatrix, 0);
+        writeInstance(17, listenerMatrix, 1);
+
+        this.sphereInstanceBuffer_GPU_Buffer = device.createBuffer({
+            size: bufferSize,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+
+        device.queue.writeBuffer(this.sphereInstanceBuffer_GPU_Buffer, 0, array);
+        this.sphereInstanceBuffer_CPU_Write = array;
+
+        const dummy = new Float32Array([
+            1,0,0,0,
+            0,1,0,0,
+            0,0,1,0,
+            0,0,0,1,
+            99999
+        ]);
+
+        this.dummyInstanceBuffer_GPU_Buffer = device.createBuffer({
+            size: dummy.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(this.dummyInstanceBuffer_GPU_Buffer, 0, dummy);
+
+    }
 
     createMainPipeline(vsh, fsh) {
         const device = this.device;
@@ -599,10 +678,22 @@ export class Loader {
                 buffers: [
                     {
                         arrayStride: this.vertexSize4Bytes * 4,
+                        stepMode: "vertex",
                         attributes: [
                             { shaderLocation: 0, offset: 0,  format: "float32x3" },
                             { shaderLocation: 1, offset: 12, format: "float32x3" },
-                            { shaderLocation: 2, offset: 24, format: "uint32" }
+                            { shaderLocation: 2, offset: 24, format: "uint32" } 
+                        ]
+                    },
+                    {
+                        arrayStride: 64 + 4,
+                        stepMode: "instance",
+                        attributes: [
+                            { shaderLocation: 3, offset: 0,  format: "float32x4" },
+                            { shaderLocation: 4, offset: 16, format: "float32x4" },
+                            { shaderLocation: 5, offset: 32, format: "float32x4" },
+                            { shaderLocation: 6, offset: 48, format: "float32x4" },
+                            { shaderLocation: 7, offset: 64, format: "uint32" }
                         ]
                     }
                 ]
@@ -667,10 +758,22 @@ export class Loader {
                 buffers: [
                     {
                         arrayStride: this.vertexSize4Bytes * 4,
+                        stepMode: "vertex",
                         attributes: [
                             { shaderLocation: 0, offset: 0,  format: "float32x3" },
                             { shaderLocation: 1, offset: 12, format: "float32x3" },
-                            { shaderLocation: 2, offset: 24, format: "uint32" }
+                            { shaderLocation: 2, offset: 24, format: "uint32" } 
+                        ]
+                    },
+                    {
+                        arrayStride: 64 + 4,
+                        stepMode: "instance",
+                        attributes: [
+                            { shaderLocation: 3, offset: 0,  format: "float32x4" },
+                            { shaderLocation: 4, offset: 16, format: "float32x4" },
+                            { shaderLocation: 5, offset: 32, format: "float32x4" },
+                            { shaderLocation: 6, offset: 48, format: "float32x4" },
+                            { shaderLocation: 7, offset: 64, format: "uint32" }
                         ]
                     }
                 ]
