@@ -5,11 +5,19 @@
 <title>Voxel Renderer</title>
 <link rel="stylesheet" href="style.css">
 
+
 </head>
 
 <body>
 
-<canvas id="gfx"></canvas>
+<div id="mainRow">
+    <canvas id="gfx"></canvas>
+    <div id="graphContainer">
+        <h3 style="text-align:center; margin: 5px;">Listener Energy</h3>
+        <canvas id="energyPlot" width="400" height="200"></canvas>
+    </div>
+</div>
+
 <div id="fps">FPS: 0</div>
 
 <div id="sliderPanel">

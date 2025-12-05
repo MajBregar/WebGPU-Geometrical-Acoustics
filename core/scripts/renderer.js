@@ -29,6 +29,8 @@ export class Renderer {
         this.depthWidth = 0;
         this.depthHeight = 0;
 
+        this.listenerEnergy = [];
+
         this.init();
     }
 
@@ -168,7 +170,7 @@ export class Renderer {
         const defaultRGB = [120, 120, 120];
         const faceCount = loader.faceCount;
         const rayCount = settings.SIMULATION.ray_count;
-        const vis_coef = 10000.0;
+        const vis_coef = 1000.0;
 
         var starting_energy = 0.0;
         for (let i = 0; i < loader.energyBands_CPU.length; i++){
@@ -233,6 +235,10 @@ export class Renderer {
 
     requestReload(){
         this.reload = true;
+    }
+
+    getListenerEnergy(){
+        return this.listenerEnergy;
     }
 
     handleReload(){
@@ -315,12 +321,10 @@ export class Renderer {
 
         const faces = await loader.readFaceStats();
         const listenerBands = await loader.readListenerBands();
-
-        // let les = 0;
-        // for (let i = 0; i < loader.energyBandCount; i++) {
-        //     les += listenerBands[i];
-        // }
-        // console.log(les);
+  
+        this.listenerEnergy = listenerBands;
+        
+        
         
         
         // function decodePos(code, roomSize) {

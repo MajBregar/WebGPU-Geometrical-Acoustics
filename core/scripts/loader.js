@@ -178,7 +178,7 @@ export class Loader {
         const out = this.listenerBands_CPU;
 
         for (let i = 0; i < count; i++) {
-            out[i] = u32[i];
+            out[i] = u32[i] / 1000000;
         }
 
         buf.unmap();

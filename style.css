@@ -3,18 +3,57 @@ html, body {
     padding: 0;
     height: 100%;
     width: 100%;
-    background: #ffffff;          /* dark outer background */
+    background: #ffffff;
+
     display: flex;
-    justify-content: center;
+    flex-direction: row;
+    justify-content: flex-start;
     align-items: center;
     overflow: hidden;
 }
+
+
+#mainRow {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+    margin-right: 240px;
+}
+
+
+#graphContainer {
+    width: 600px;
+    height: 400px;
+    padding: 5px;
+    border: 1px solid #111111;
+    background: #ffffff;
+
+    justify-content: center;
+    align-items: center;
+}
+
+#energyPlot {
+    width: 90%;
+    height: 80%;
+    display: block;
+    margin: 10px;
+}
+
+
 
 #gfx {
     width: 60vw;
     height: 60vh;
     display: block;
     background: #b4b4b4;
+    margin-left: 20px;
+}
+
+#energyPlot {
+    width: 90%;
+    height: 80%;
+    display: block;
 }
 
 #fps {

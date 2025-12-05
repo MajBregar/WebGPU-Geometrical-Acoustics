@@ -1,3 +1,5 @@
+import { WebglPlot, WebglLine, ColorRGBA } from "https://cdn.jsdelivr.net/gh/danchitnis/webgl-plot@master/dist/webglplot.esm.min.js";
+
 export class UI {
 
     constructor(settings, renderer) {
@@ -11,6 +13,106 @@ export class UI {
         this.initEmitterListenerSliders();
         this.initWallCheckboxes();
         this.initReloadButton();
+        this.createGraph();
+    }
+
+    createGraph() {
+        const plot = document.getElementById("energyPlot");
+
+        plot.width = plot.clientWidth;
+        plot.height = plot.clientHeight;
+
+        this.wglp = new WebglPlot(plot);
+
+        this.graphSampleCount = this.settings.SIMULATION.energy_bands;
+
+        const offset = 0.05;
+
+        // ----------------------------
+        // Main data line
+        // ----------------------------
+        this.graphLine = new WebglLine(new ColorRGBA(1, 0, 0, 1), this.graphSampleCount);
+        this.graphLine.lineWidth = 2;
+        this.wglp.addLine(this.graphLine);
+
+        const Xmin = -1 + offset;
+        const Xmax =  1 - offset;
+        const Ymin = -1 + offset;
+        const Ymax =  1 - offset;
+
+        for (let i = 0; i < this.graphSampleCount; i++) {
+            const t = i / (this.graphSampleCount - 1);
+
+            // X scaled into plot region
+            this.graphLine.setX(i, Xmin + t * (Xmax - Xmin));
+
+            // Y initially zero inside plot region
+            this.graphLine.setY(i, Ymin);
+        }
+
+        // ----------------------------
+        // X axis line
+        // ----------------------------
+        this.xAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
+        this.xAxis.setX(0, Xmin); this.xAxis.setY(0, Ymin);
+        this.xAxis.setX(1, Xmax); this.xAxis.setY(1, Ymin);
+        this.wglp.addLine(this.xAxis);
+
+        // ----------------------------
+        // Y axis line
+        // ----------------------------
+        this.yAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
+        this.yAxis.setX(0, Xmin); this.yAxis.setY(0, Ymin);
+        this.yAxis.setX(1, Xmin); this.yAxis.setY(1, Ymax);
+        this.wglp.addLine(this.yAxis);
+
+        // ----------------------------
+        // Y ticks
+        // ----------------------------
+        const YTICKS = [0, 250, 500, 750, 1000];
+        this.yTicks = [];
+
+        for (let tVal of YTICKS) {
+            const ty = Ymin + (tVal / 1000) * (Ymax - Ymin);  // scale tick to plot region
+
+            const tick = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
+            tick.setX(0, Xmin);          tick.setY(0, ty);
+            tick.setX(1, Xmin + 0.03);   tick.setY(1, ty);  // small horizontal tick
+            this.yTicks.push(tick);
+
+            this.wglp.addLine(tick);
+        }
+
+        this.wglp.update();
+    }
+
+
+
+    updateGraph(values) {
+        if (!this.graphLine) return;
+
+        const offset = 0.05;
+        const Ymin = -1 + offset;
+        const Ymax =  1 - offset;
+
+        const n = Math.min(values.length, this.graphSampleCount);
+
+        for (let i = 0; i < n; i++) {
+            const v = values[i];
+
+            // clamp to [0, 1000]
+            const vClamped = Math.max(0, Math.min(1000, v));
+
+            // normalised 0..1
+            const t = vClamped / 1000;
+
+            // map into padded coordinate system
+            const y = Ymin + t * (Ymax - Ymin);
+
+            this.graphLine.setY(i, y);
+        }
+
+        this.wglp.update();
     }
 
 
@@ -51,8 +153,6 @@ export class UI {
         listen.x.value = lx0; listen.y.value = ly0; listen.z.value = lz0;
         listen.xv.textContent = lx0; listen.yv.textContent = ly0; listen.zv.textContent = lz0;
 
-        const renderer = this.renderer;
-
         function updateEmitter() {
             const x = Number(emit.x.value);
             const y = Number(emit.y.value);
@@ -63,7 +163,6 @@ export class UI {
             emit.zv.textContent = z;
 
             settings.SIMULATION.emitter_position = [x, y, z];
-
         }
 
         function updateListener() {
@@ -86,8 +185,6 @@ export class UI {
         listen.y.addEventListener("input", updateListener);
         listen.z.addEventListener("input", updateListener);
     }
-
-
 
     initWallCheckboxes() {
 
@@ -123,7 +220,6 @@ export class UI {
             cb.addEventListener("change", updateCheckboxes);
         });
     }
-
 
     initReloadButton() {
         const btn = document.getElementById("reloadBtn");

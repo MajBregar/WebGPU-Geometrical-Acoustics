@@ -3,6 +3,7 @@ import { Loader } from "./core/scripts/loader.js";
 import { Controller } from "./core/scripts/controller.js";
 import { UI } from "./core/scripts/ui.js";
 
+
 const canvas = document.getElementById("gfx");
 canvas.width = canvas.clientWidth;
 canvas.height = canvas.clientHeight;
@@ -52,10 +53,12 @@ async function gameLoop() {
 
         await renderer.renderFrame();
         updateGPUFPS(start);
+
+        const energy = renderer.getListenerEnergy();
+        ui.updateGraph(energy);
     }
 
     requestAnimationFrame(gameLoop);
 }
-
 
 gameLoop();

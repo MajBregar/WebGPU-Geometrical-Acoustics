@@ -145,7 +145,8 @@ fn valid_voxel_pos(voxel_pos: vec3<i32>, room_dims: vec3<i32>) -> bool{
 
 struct RayResult {
     dir : vec3<f32>,
-    energy : array<f32, MAX_BANDS>
+    energy : array<f32, MAX_BANDS>,
+    hit_listener : bool
 };
 
 fn trace_ray(
@@ -223,12 +224,17 @@ fn trace_ray(
             break;
         }
 
-        
         pos = hitPos + dir * 1e-4;
+
+        let dist = distance(pos, uni.listenerPos);
+        if (dist <= uni.listenerRadius) {
+            return RayResult(dir, ray_enery_bands, true);
+        }
+
         step++;
     }
 
-    return RayResult(dir, ray_enery_bands);
+    return RayResult(dir, ray_enery_bands, false);
 }
 
 fn generate_direction_on_sphere(id : u32, max_rays : u32) -> vec3<f32>{
@@ -253,9 +259,11 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let origin = uni.rayOrigin + dir * 1e-4;
     let result = trace_ray(origin, dir);
 
-    //test
-    for (var i : u32 = 0u; i < uni.energyBandCount; i++) {
-        atomicAdd(&listenerEnergyBands[i], 1u);
+    if (result.hit_listener) {
+        for (var i : u32 = 0u; i < uni.energyBandCount; i++) {
+            let e = result.energy[i];
+            let e_u32 = u32(e * PRECISION_ADJ);
+            atomicAdd(&listenerEnergyBands[i], e_u32);
+        }
     }
-
 }
