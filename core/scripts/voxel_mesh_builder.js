@@ -1,4 +1,4 @@
-import { RoomBlock } from "./room_generation.js";
+import { MATERIAL_IDS } from "./room_generation.js";
 
 export class VoxelMeshBuilder {
 
@@ -83,9 +83,9 @@ export class VoxelMeshBuilder {
                 const nz = pz;
 
                 vertices.push(
-                    px * radius, py * radius, pz * radius,   // position (3 floats)
-                    nx, ny, nz,                              // normal   (3 floats)
-                    0xFFFFFFFF                               // faceID for spheres (uint32)
+                    px * radius, py * radius, pz * radius,
+                    nx, ny, nz,
+                    0xFFFFFFFF
                 );
             }
         }
@@ -97,7 +97,6 @@ export class VoxelMeshBuilder {
                 const i2 = i0 + segments + 1;
                 const i3 = i2 + 1;
 
-                // two triangles per quad
                 indices.push(i0, i2, i1);
                 indices.push(i1, i2, i3);
             }
@@ -117,22 +116,17 @@ export class VoxelMeshBuilder {
 
         const voxel_2_face = new Uint32Array(voxelCount * 6);
         voxel_2_face.fill(0xFFFFFFFF);
+
         const face_2_voxel = [];
 
-        function isSolid(r, g, b, a) {
-            if (a === 0) return false;
-            return (
-                r === RoomBlock.WALL.rgba[0] &&
-                g === RoomBlock.WALL.rgba[1] &&
-                b === RoomBlock.WALL.rgba[2]
-            );
+        function isSolidVoxel(voxelID) {
+            return voxelID !== MATERIAL_IDS.AIR;
         }
 
         function isAirAt(index) {
-            if (index < 0 || index >= voxelCount) return true; // treat out of bounds as air
-            return voxels[index * 4 + 3] === 0;
+            if (index < 0 || index >= voxelCount) return true;
+            return voxels[index] === MATERIAL_IDS.AIR;
         }
-
 
         const dirs = [
             [ 1, 0, 0, 0], // +X → faces[0]
@@ -143,20 +137,17 @@ export class VoxelMeshBuilder {
             [ 0, 0,-1, 5]  // -Z → faces[5]
         ];
 
-
-
         for (let z = 0; z < sz; z++) {
             for (let y = 0; y < sy; y++) {
                 for (let x = 0; x < sx; x++) {
 
                     const v = z * sy * sx + y * sx + x;
 
-                    const r = voxels[v * 4 + 0];
-                    const g = voxels[v * 4 + 1];
-                    const b = voxels[v * 4 + 2];
-                    const a = voxels[v * 4 + 3];
+                    const voxelID = voxels[v];
 
-                    if (!isSolid(r, g, b, a)) continue;
+                    if (!isSolidVoxel(voxelID)) {
+                        continue;
+                    }
 
                     for (let i = 0; i < 6; i++) {
                         const [dx, dy, dz, faceIndex] = dirs[i];
@@ -193,6 +184,7 @@ export class VoxelMeshBuilder {
 
 
 
+
     buildStaticMesh(face_to_voxel, voxel_to_face, vertexSize) {
         const [sx, sy, sz] = this.dimensions;
 
@@ -203,19 +195,14 @@ export class VoxelMeshBuilder {
         let vertexCount = 0;
         let indexOffset = 0;
 
-        // Loop over visible faces only
         for (let faceIndex = 0; faceIndex < face_to_voxel.length; faceIndex++) {
 
-            // voxel index that owns this face
             const v = face_to_voxel[faceIndex];
 
-            // recover voxel coordinates
             const x = v % sx;
             const y = Math.floor(v / sx) % sy;
             const z = Math.floor(v / (sx * sy));
 
-            // find which faceLocal corresponds to this faceIndex
-            // voxel_to_face[v*6 + faceLocal] == faceIndex
             let faceLocal = -1;
             const base = v * 6;
             for (let f = 0; f < 6; f++) {
@@ -224,13 +211,11 @@ export class VoxelMeshBuilder {
                     break;
                 }
             }
-            if (faceLocal === -1) continue; // safety fallback
+            if (faceLocal === -1) continue;
 
-            // face definition
             const f = this.faces[faceLocal];
             const N = f.dir;
 
-            // 4 quad vertices
             for (let c = 0; c < 4; c++) {
                 const [cx, cy, cz] = f.corners[c];
 
@@ -243,7 +228,6 @@ export class VoxelMeshBuilder {
                 vertexCount++;
             }
 
-            // 2 triangles
             indices.push(
                 indexOffset + 0,
                 indexOffset + 1,
@@ -256,15 +240,14 @@ export class VoxelMeshBuilder {
             indexOffset += 4;
         }
 
-        // Convert to packed U32 buffer
         const vertexArray = new Uint32Array(vertices.length);
         const floatView = new Float32Array(vertexArray.buffer);
 
         for (let i = 0; i < vertices.length; i++) {
             if ((i % stride) === 6) {
-                vertexArray[i] = vertices[i]; // faceIndex = uint32
+                vertexArray[i] = vertices[i];
             } else {
-                floatView[i] = vertices[i]; // position + normal = float32
+                floatView[i] = vertices[i];
             }
         }
 

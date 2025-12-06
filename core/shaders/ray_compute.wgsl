@@ -26,7 +26,7 @@ const PRECISION_ADJ : f32 = 1000000.0;
 var<uniform> uni : RayUniforms;
 
 @group(0) @binding(1)
-var<storage, read> voxelCoef : array<f32>;
+var<storage, read> materialID : array<u32>;
 
 @group(0) @binding(2)
 var<storage, read> voxel_to_face : array<u32>;
@@ -185,9 +185,8 @@ fn trace_ray(
         }
 
         let nextID = get_voxelID(next, roomDims);
-        let absorption = voxelCoef[nextID];
-        let isWall = absorption > 0.0;
-
+        let material_id = materialID[nextID];
+        let isWall = material_id > 0u;
 
 
         var overall_energy = 0.0;

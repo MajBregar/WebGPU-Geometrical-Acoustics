@@ -1,5 +1,5 @@
 import { VoxelMeshBuilder } from "./voxel_mesh_builder.js";
-import { generateRoom, RoomBlock, MATERIAL_COEFFICIENTS } from "./room_generation.js";
+import { generateRoom } from "./room_generation.js";
 
 export class Loader {
 
@@ -21,7 +21,6 @@ export class Loader {
         //geometry
         this.room_dimensions = settings.SIMULATION.room_dimensions;
         this.room_voxel_data = null;
-        this.room_voxel_coefs = null;
         this.faceCount = 0;
         this.indexCount = 0;
         this.vertexCount = 0;
@@ -46,7 +45,7 @@ export class Loader {
         this.faceColors_GPU_Buffer = null;
         this.vertexBuffer_GPU_Buffer = null;
         this.indexBuffer_GPU_Buffer = null;
-        this.voxelCoefs_GPU_Buffer = null;
+        this.voxelIDs_GPU_Buffer = null;
         this.voxelToFaceID_GPU_Buffer = null;
         this.faceStats_GPU_Buffer = null;
         this.faceStats_GPU_ReadBack = null;
@@ -119,13 +118,11 @@ export class Loader {
         this.createEnergyBandBuffer();
         this.createShadowMap();
 
-        this.room_voxel_data = generateRoom(this.room_dimensions);
-        this.room_voxel_coefs = this.getVoxelCoefs(this.room_voxel_data);
-        this.createVoxelCoefBuffer();
+        this.room_voxel_data = generateRoom(this.room_dimensions);                
+        this.createVoxelIDBuffer();
         this.createWritebackBuffers();
-
-
         this.createMeshAndBuffers();
+
         this.createFaceColorBuffer();
         this.createSphereBuffers();
         this.createInstanceBuffer();
@@ -199,7 +196,6 @@ export class Loader {
 
         if (!this.room_dimensions) return false;
         if (!this.room_voxel_data) return false;
-        if (!this.room_voxel_coefs) return false;
         if (!this.vertexBuffer_GPU_Buffer) return false;
         if (!this.indexBuffer_GPU_Buffer) return false;
         if (this.indexCount === 0) return false;
@@ -211,7 +207,7 @@ export class Loader {
         if (!this.hiddenWallFlags_CPU) return false;
         if (!this.rayPipeline) return false;
         if (!this.rayBindGroup) return false;
-        if (!this.voxelCoefs_GPU_Buffer) return false;
+        if (!this.voxelIDs_GPU_Buffer) return false;
         if (!this.voxelToFaceID_GPU_Buffer) return false;
         if (!this.faceStats_GPU_Buffer) return false;
         if (!this.faceStats_GPU_ReadBack) return false;
@@ -278,53 +274,6 @@ export class Loader {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
     }
-
-
-    getVoxelCoefs(voxelRGBA) {
-        const sx = this.room_dimensions[0];
-        const sy = this.room_dimensions[1];
-        const sz = this.room_dimensions[2];
-
-        const voxelCount = sx * sy * sz;
-        const coefBuffer = new Float32Array(voxelCount);
-
-        function blockTypeFromRGBA(r, g, b, a) {
-            if (a === 0) return "AIR";
-
-            if (r === RoomBlock.WALL.rgba[0] &&
-                g === RoomBlock.WALL.rgba[1] &&
-                b === RoomBlock.WALL.rgba[2]) {
-                return "WALL";
-            }
-
-            if (r === RoomBlock.SOURCE.rgba[0] &&
-                g === RoomBlock.SOURCE.rgba[1] &&
-                b === RoomBlock.SOURCE.rgba[2]) {
-                return "SOURCE";
-            }
-
-            return "AIR";
-        }
-
-        let v = 0;
-        for (let z = 0; z < sz; z++)
-        for (let y = 0; y < sy; y++)
-        for (let x = 0; x < sx; x++) {
-            const id = (z * sy * sx + y * sx + x) * 4;
-
-            const r = voxelRGBA[id + 0];
-            const g = voxelRGBA[id + 1];
-            const b = voxelRGBA[id + 2];
-            const a = voxelRGBA[id + 3];
-
-            const type = blockTypeFromRGBA(r, g, b, a);
-            coefBuffer[v++] = MATERIAL_COEFFICIENTS[type];
-        }
-
-        return coefBuffer;
-    }
-
-    
 
 
     createWritebackBuffers() {
@@ -601,18 +550,18 @@ export class Loader {
         });
     }
 
-    createVoxelCoefBuffer() {
-        this.voxelCoefs_GPU_Buffer = this.device.createBuffer({
-            size: this.room_voxel_coefs.byteLength,
+    createVoxelIDBuffer() {
+        this.voxelIDs_GPU_Buffer = this.device.createBuffer({
+            size: this.room_voxel_data.byteLength,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
         });
 
         this.device.queue.writeBuffer(
-            this.voxelCoefs_GPU_Buffer,
+            this.voxelIDs_GPU_Buffer,
             0,
-            this.room_voxel_coefs.buffer,
-            this.room_voxel_coefs.byteOffset,
-            this.room_voxel_coefs.byteLength
+            this.room_voxel_data.buffer,
+            this.room_voxel_data.byteOffset,
+            this.room_voxel_data.byteLength
         );
     }
 
@@ -871,7 +820,7 @@ export class Loader {
                     buffer: { type: "uniform" }
                 },
 
-                // 1: Voxel absorption coefficients
+                // 1: Voxel ids
                 {
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
@@ -931,7 +880,7 @@ export class Loader {
                 // 1 - voxel absorption coefficients
                 {
                     binding: 1,
-                    resource: { buffer: this.voxelCoefs_GPU_Buffer }
+                    resource: { buffer: this.voxelIDs_GPU_Buffer }
                 },
 
                 // 2 - voxel -> solid ID table
