@@ -13,107 +13,114 @@ export class UI {
         this.initEmitterListenerSliders();
         this.initWallCheckboxes();
         this.initReloadButton();
-        this.createGraph();
+
+        this.inputGraph  = this.createGraph("energyPlot1");
+        this.outputGraph = this.createGraph("energyPlot2");
     }
 
-    createGraph() {
-        const plot = document.getElementById("energyPlot");
+    createGraph(divID) {
+        const plot = document.getElementById(divID);
 
-        plot.width = plot.clientWidth;
+        plot.width  = plot.clientWidth;
         plot.height = plot.clientHeight;
 
-        this.wglp = new WebglPlot(plot);
-
-        this.graphSampleCount = this.settings.SIMULATION.energy_bands;
-
+        const graphSampleCount = this.settings.SIMULATION.energy_bands;
         const offset = 0.05;
 
-        // ----------------------------
-        // Main data line
-        // ----------------------------
-        this.graphLine = new WebglLine(new ColorRGBA(1, 0, 0, 1), this.graphSampleCount);
-        this.graphLine.lineWidth = 2;
-        this.wglp.addLine(this.graphLine);
-
+        // Coordinate bounds inside plot region
         const Xmin = -1 + offset;
         const Xmax =  1 - offset;
         const Ymin = -1 + offset;
         const Ymax =  1 - offset;
 
-        for (let i = 0; i < this.graphSampleCount; i++) {
-            const t = i / (this.graphSampleCount - 1);
+        // ----------------------------
+        // WebglPlot instance
+        // ----------------------------
+        const wglp = new WebglPlot(plot);
 
-            // X scaled into plot region
-            this.graphLine.setX(i, Xmin + t * (Xmax - Xmin));
+        // ----------------------------
+        // Main data line
+        // ----------------------------
+        const mainLine = new WebglLine(new ColorRGBA(1, 0, 0, 1), graphSampleCount);
+        mainLine.lineWidth = 2;
 
-            // Y initially zero inside plot region
-            this.graphLine.setY(i, Ymin);
+        for (let i = 0; i < graphSampleCount; i++) {
+            const t = i / (graphSampleCount - 1);
+            mainLine.setX(i, Xmin + t * (Xmax - Xmin));
+            mainLine.setY(i, Ymin);
         }
 
-        // ----------------------------
-        // X axis line
-        // ----------------------------
-        this.xAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
-        this.xAxis.setX(0, Xmin); this.xAxis.setY(0, Ymin);
-        this.xAxis.setX(1, Xmax); this.xAxis.setY(1, Ymin);
-        this.wglp.addLine(this.xAxis);
+        wglp.addLine(mainLine);
 
         // ----------------------------
-        // Y axis line
+        // X axis
         // ----------------------------
-        this.yAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
-        this.yAxis.setX(0, Xmin); this.yAxis.setY(0, Ymin);
-        this.yAxis.setX(1, Xmin); this.yAxis.setY(1, Ymax);
-        this.wglp.addLine(this.yAxis);
+        const xAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
+        xAxis.setX(0, Xmin); xAxis.setY(0, Ymin);
+        xAxis.setX(1, Xmax); xAxis.setY(1, Ymin);
+        wglp.addLine(xAxis);
 
         // ----------------------------
-        // Y ticks
+        // Y axis
         // ----------------------------
-        const YTICKS = [0, 250, 500, 750, 1000];
-        this.yTicks = [];
+        const yAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
+        yAxis.setX(0, Xmin); yAxis.setY(0, Ymin);
+        yAxis.setX(1, Xmin); yAxis.setY(1, Ymax);
+        wglp.addLine(yAxis);
+
+        // ----------------------------
+        // Y ticks (0 to 1.2)
+        // ----------------------------
+        const YTICKS = [0, 0.3, 0.6, 0.9, 1.2];
+        const yTicks = [];
 
         for (let tVal of YTICKS) {
-            const ty = Ymin + (tVal / 1000) * (Ymax - Ymin);  // scale tick to plot region
-
+            const ty = Ymin + (tVal / 1.2) * (Ymax - Ymin);
             const tick = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
-            tick.setX(0, Xmin);          tick.setY(0, ty);
-            tick.setX(1, Xmin + 0.03);   tick.setY(1, ty);  // small horizontal tick
-            this.yTicks.push(tick);
 
-            this.wglp.addLine(tick);
+            tick.setX(0, Xmin);
+            tick.setY(0, ty);
+
+            tick.setX(1, Xmin + 0.03);
+            tick.setY(1, ty);
+
+            yTicks.push(tick);
+            wglp.addLine(tick);
         }
 
-        this.wglp.update();
+        wglp.update();
+
+        return {
+            wglp,
+            mainLine,
+            xAxis,
+            yAxis,
+            yTicks,
+            sampleCount: graphSampleCount,
+            bounds: { Xmin, Xmax, Ymin, Ymax },
+            ymaxValue: 1.2
+        };
     }
 
 
 
-    updateGraph(values) {
-        if (!this.graphLine) return;
+    updateGraph(graph, values) {
+        if (!graph || !graph.mainLine) return;
 
-        const offset = 0.05;
-        const Ymin = -1 + offset;
-        const Ymax =  1 - offset;
+        const { mainLine, wglp, sampleCount, bounds } = graph;
+        const { Ymin, Ymax } = bounds;
 
-        const n = Math.min(values.length, this.graphSampleCount);
+        const n = Math.min(values.length, sampleCount);
 
         for (let i = 0; i < n; i++) {
             const v = values[i];
-
-            // clamp to [0, 1000]
-            const vClamped = Math.max(0, Math.min(1000, v));
-
-            // normalised 0..1
-            const t = vClamped / 1000;
-
-            // map into padded coordinate system
-            const y = Ymin + t * (Ymax - Ymin);
-
-            this.graphLine.setY(i, y);
+            const y = Ymin + (v / 1.2) * (Ymax - Ymin);
+            mainLine.setY(i, y);
         }
 
-        this.wglp.update();
+        wglp.update();
     }
+
 
 
     initEmitterListenerSliders() {

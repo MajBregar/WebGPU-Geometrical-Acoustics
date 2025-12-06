@@ -13,11 +13,12 @@ function type_uvec3(v)  { return { kind:"uvec3",  value:v }; }
 
 export class Renderer {
 
-    constructor(canvas, device, loader, controller, settings) {
+    constructor(canvas, device, loader, controller, sound_processor, settings) {
         this.canvas = canvas;
         this.device = device;
         this.loader = loader;
         this.controller = controller;
+        this.sound_processor = sound_processor;
         this.settings = settings;
 
         this.context = null;
@@ -221,17 +222,22 @@ export class Renderer {
     }
 
 
-    generateEnergyBandBufferData() {
-        const sim = this.settings.SIMULATION;
+    updateInputEnergyBuffer() {
         const loader = this.loader;
         const energy = loader.energyBands_CPU;
-        for (let i = 0; i < energy.length; i++){
-            energy[i] = 1.0;
-        }
         this.device.queue.writeBuffer(loader.energyBandBuffer, 0, energy);
     }
 
 
+    debug_u32_to_vec3(code, roomSize) {
+        const qx =  code         & 0x3FF;
+        const qy = (code >> 10) & 0x3FF;
+        const qz = (code >> 20) & 0x3FF; 
+        const x = (qx / 1023) * roomSize[0];
+        const y = (qy / 1023) * roomSize[1];
+        const z = (qz / 1023) * roomSize[2];
+        return [ x, y, z ];
+    }
 
     requestReload(){
         this.reload = true;
@@ -270,7 +276,7 @@ export class Renderer {
         const settings = this.settings;
 
         this.updateUniforms();
-        this.generateEnergyBandBufferData();
+        this.updateInputEnergyBuffer();
 
         // ----------------------------------------------------
         // PASS 0: SOUND RAY COMPUTE SHADER
@@ -321,43 +327,7 @@ export class Renderer {
 
         const faces = await loader.readFaceStats();
         const listenerBands = await loader.readListenerBands();
-  
-        this.listenerEnergy = listenerBands;
-        
-        
-        
-        
-        // function decodePos(code, roomSize) {
-        //     const qx =  code         & 0x3FF;
-        //     const qy = (code >> 10) & 0x3FF;
-        //     const qz = (code >> 20) & 0x3FF; 
-
-        //     // convert back to float voxel space
-        //     const x = (qx / 1023) * roomSize[0];
-        //     const y = (qy / 1023) * roomSize[1];
-        //     const z = (qz / 1023) * roomSize[2];
-
-        //     return { x, y, z };
-        // }
-
-        // //console.log("RAY POSITIONS");
-        // const positions_debug = []
-        // var test = 0;
-        // for (let i = 0; i < faces.length; i++){
-        //     const enc = faces[i].bounceCount;
-        //     test += enc;            
-        //     // if (enc <= 0) break;
-
-        //     // const enc_hit = faces[i].absorbedEnergy;
-
-        //     // const dec = decodePos(enc, loader.room_dimensions);
-        //     // const dec_hit = decodePos(enc_hit, loader.room_dimensions);
-
-        //     // positions_debug.push({pos: [dec.x, dec.y, dec.z], hit: [dec_hit.x, dec_hit.y, dec_hit.z]});
-        // }
-        // //console.log(positions_debug);
-        // //console.log(test);
-        
+        this.listenerEnergy = this.sound_processor.process_listener_sound(listenerBands);
         
         this.updateColors(faces);
         this.updateSpherePositions();

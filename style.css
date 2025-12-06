@@ -12,35 +12,43 @@ html, body {
     overflow: hidden;
 }
 
-
+/* Left: gfx   |   Right: vertical graph column */
 #mainRow {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
-    gap: 10px;
+    gap: 20px;
     margin-right: 240px;
 }
 
+/* New container to stack graphs vertically */
+#graphsColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
 
-#graphContainer {
+#inputGraphContainer,
+#outputGraphContainer {
     width: 600px;
     height: 400px;
     padding: 5px;
     border: 1px solid #111111;
     background: #ffffff;
 
+    display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
 }
 
-#energyPlot {
+#energyPlot1,
+#energyPlot2 {
     width: 90%;
     height: 80%;
     display: block;
     margin: 10px;
 }
-
-
 
 #gfx {
     width: 60vw;
@@ -50,11 +58,6 @@ html, body {
     margin-left: 20px;
 }
 
-#energyPlot {
-    width: 90%;
-    height: 80%;
-    display: block;
-}
 
 #fps {
     position: fixed;

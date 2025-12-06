@@ -1,7 +1,7 @@
 {
 
     "SIMULATION" : {
-        "room_dimensions" : [64, 16, 32],
+        "room_dimensions" : [32, 16, 32],
         "background_color" : [200, 200, 200, 255],
         "hide_walls" : {
             "top" : true,
@@ -11,13 +11,13 @@
             "west" : false
         },
 
-        "ray_count" : 1000,
+        "ray_count" : 10000,
         "energy_bands" : 10,
         "max_ray_steps" : 10000,
         "voxel_scale_meters" : 0.1,
         "ray_energy_min" : 0.0001,
         "emitter_position" : [8.5, 8.5, 8.5],
-        "listener_position" : [38, 6, 26],
+        "listener_position" : [20, 6, 26],
         "listener_radius" : 1
 
 

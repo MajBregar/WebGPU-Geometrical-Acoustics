@@ -3,8 +3,6 @@ A simple WebGPU-based simulation of geometrical acoustics.
 
 
 # TODO
-- add ray soaking into listener (ignore dir for now), hook up listener energy output to CPU
-- add graph for input energies and listener output energies
 
 - switch to ID based voxel mapping - voxels should only hold voxelTypeID, add propery translation table as input to shader
 - READ PAPER MORE IN DEPTH - make sound rays physically accurate

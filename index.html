@@ -12,11 +12,20 @@
 
 <div id="mainRow">
     <canvas id="gfx"></canvas>
-    <div id="graphContainer">
-        <h3 style="text-align:center; margin: 5px;">Listener Energy</h3>
-        <canvas id="energyPlot" width="400" height="200"></canvas>
+
+    <div id="graphsColumn">
+        <div id="inputGraphContainer">
+            <h3 style="text-align:center; margin: 5px;">Emitter Energy</h3>
+            <canvas id="energyPlot1" width="400" height="200"></canvas>
+        </div>
+
+        <div id="outputGraphContainer">
+            <h3 style="text-align:center; margin: 5px;">Listener Energy</h3>
+            <canvas id="energyPlot2" width="400" height="200"></canvas>
+        </div>
     </div>
 </div>
+
 
 <div id="fps">FPS: 0</div>
 
