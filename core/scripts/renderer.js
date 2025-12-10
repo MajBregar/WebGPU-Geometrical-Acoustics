@@ -149,7 +149,9 @@ export class Renderer {
             face_count : type_u32(loader.faceCount),
 
             listener_pos: type_vec3(sim.listener_position),
-            listener_radius : type_float(sim.listener_radius)
+            listener_radius : type_float(sim.listener_radius),
+
+            precision_adj: type_float(sim.unit_precision_adjustment)
         }
 
         loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
@@ -171,13 +173,15 @@ export class Renderer {
         const defaultRGB = [120, 120, 120];
         const faceCount = loader.faceCount;
         const rayCount = settings.SIMULATION.ray_count;
-        const vis_coef = 1000.0;
-
+        const vis_coef = settings.SIMULATION.heatmap_sensitivity;
+        const unit_precision_adjustment = settings.SIMULATION.unit_precision_adjustment;
+        
         var starting_energy = 0.0;
         for (let i = 0; i < loader.energyBands_CPU.length; i++){
             starting_energy += loader.energyBands_CPU[i];
         }
-        starting_energy = starting_energy * 1000000;
+        starting_energy = starting_energy * unit_precision_adjustment;
+        
 
         for (let faceID = 0; faceID < faceCount; faceID++) {
             const face = face_data[faceID];
@@ -185,8 +189,8 @@ export class Renderer {
             const hide_alpha = hidden_walls[faceID] ? 0 : 255;
 
             const enery_absorbed = face.absorbedEnergy;
-            const energy_color = (enery_absorbed / starting_energy) * vis_coef * 255;
-            //console.log(enery_absorbed, starting_energy);
+
+            const energy_color = (enery_absorbed / starting_energy) * Math.pow(10, vis_coef) * 255;
 
             const bounces = face.bounceCount;
             const bounce_color = (bounces / 10) * 255;

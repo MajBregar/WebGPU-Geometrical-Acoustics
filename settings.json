@@ -13,12 +13,14 @@
 
         "ray_count" : 10000,
         "energy_bands" : 10,
-        "max_ray_steps" : 10000,
+        "max_ray_steps" : 5000,
         "voxel_scale_meters" : 0.1,
-        "ray_energy_min" : 0.0001,
+        "ray_energy_min" : 0.01,
         "emitter_position" : [8.5, 8.5, 8.5],
         "listener_position" : [20, 6, 26],
-        "listener_radius" : 1
+        "listener_radius" : 1,
+        "heatmap_sensitivity" : 3.2,
+        "unit_precision_adjustment" : 1000000
 
 
     },

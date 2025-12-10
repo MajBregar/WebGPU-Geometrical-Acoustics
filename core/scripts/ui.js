@@ -142,7 +142,18 @@ export class UI {
             z: document.getElementById("lz_slider"),
             xv: document.getElementById("lx_val"),
             yv: document.getElementById("ly_val"),
-            zv: document.getElementById("lz_val")
+            zv: document.getElementById("lz_val"),
+            sens: document.getElementById("lsens_slider"),
+            sensv: document.getElementById("lsens_val")
+        };
+
+        const debug = {
+            x: document.getElementById("dx_slider"),
+            y: document.getElementById("dy_slider"),
+            z: document.getElementById("dz_slider"),
+            xv: document.getElementById("dx_val"),
+            yv: document.getElementById("dy_val"),
+            zv: document.getElementById("dz_val")
         };
 
         [emit, listen].forEach(S => {
@@ -160,6 +171,10 @@ export class UI {
         listen.x.value = lx0; listen.y.value = ly0; listen.z.value = lz0;
         listen.xv.textContent = lx0; listen.yv.textContent = ly0; listen.zv.textContent = lz0;
 
+        const visualization_sensitivity = settings.SIMULATION.heatmap_sensitivity;
+        listen.sens.value = visualization_sensitivity;
+        listen.sensv.textContent = visualization_sensitivity;
+
         function updateEmitter() {
             const x = Number(emit.x.value);
             const y = Number(emit.y.value);
@@ -176,12 +191,25 @@ export class UI {
             const x = Number(listen.x.value);
             const y = Number(listen.y.value);
             const z = Number(listen.z.value);
+            const s = Number(listen.sens.value);
 
             listen.xv.textContent = x;
             listen.yv.textContent = y;
             listen.zv.textContent = z;
+            listen.sensv.textContent = s;
 
             settings.SIMULATION.listener_position = [x, y, z];
+            settings.SIMULATION.heatmap_sensitivity = s;
+        }
+
+        function updateDebug() {
+            const x = Number(debug.x.value);
+            const y = Number(debug.y.value);
+            const z = Number(debug.z.value);
+
+            debug.xv.textContent = x;
+            debug.yv.textContent = y;
+            debug.zv.textContent = z;
         }
 
         emit.x.addEventListener("input", updateEmitter);
@@ -191,6 +219,12 @@ export class UI {
         listen.x.addEventListener("input", updateListener);
         listen.y.addEventListener("input", updateListener);
         listen.z.addEventListener("input", updateListener);
+        listen.sens.addEventListener("input", updateListener);
+
+
+        debug.x.addEventListener("input", updateDebug);
+        debug.y.addEventListener("input", updateDebug);
+        debug.z.addEventListener("input", updateDebug);
     }
 
     initWallCheckboxes() {

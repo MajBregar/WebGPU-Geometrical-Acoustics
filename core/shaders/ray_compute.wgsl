@@ -16,11 +16,12 @@ struct RayUniforms {
     faceCount : u32,
 
     listenerPos : vec3<f32>,
-    listenerRadius : f32
+    listenerRadius : f32,
+
+    precisionAdj : f32
 };
 
 const MAX_BANDS: u32 = 10;
-const PRECISION_ADJ : f32 = 1000000.0;
 
 @group(0) @binding(0)
 var<uniform> uni : RayUniforms;
@@ -39,6 +40,93 @@ var<storage, read> initialEnergyBands : array<f32>;
 
 @group(0) @binding(5)
 var<storage, read_write> listenerEnergyBands : array<atomic<u32>>;
+
+
+
+
+
+
+
+
+
+
+
+
+
+struct Material {
+    absorption   : array<f32, MAX_BANDS>,
+    reflection   : array<f32, MAX_BANDS>,
+    transmission : array<f32, MAX_BANDS>,
+    refraction   : array<f32, MAX_BANDS>,
+};
+
+const concreteMaterial : Material = Material(
+    // absorption
+    array<f32, MAX_BANDS>(
+        0.01, // 31.5 Hz
+        0.01, // 63 Hz
+        0.02, // 125 Hz
+        0.02, // 250 Hz
+        0.03, // 500 Hz
+        0.04, // 1 kHz
+        0.05, // 2 kHz
+        0.07, // 4 kHz
+        0.09, // 8 kHz
+        0.10  // 16 kHz
+    ),
+
+    // reflection
+    array<f32, MAX_BANDS>(
+        0.99,
+        0.99,
+        0.98,
+        0.98,
+        0.97,
+        0.96,
+        0.95,
+        0.93,
+        0.91,
+        0.90
+    ),
+
+    // transmission (all zero)
+    array<f32, MAX_BANDS>(
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ),
+
+    // refraction (all zero)
+    array<f32, MAX_BANDS>(
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    )
+);
+
+
+const materials : array<Material, 1> = array<Material, 1>(
+    concreteMaterial
+);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -158,7 +246,7 @@ fn trace_ray(
 
     var ray_enery_bands : array<f32, MAX_BANDS>;
     for (var j : u32 = 0u; j < uni.energyBandCount; j++) {
-        ray_enery_bands[j] = (initialEnergyBands[j] * PRECISION_ADJ) /  f32(uni.rayCount);
+        ray_enery_bands[j] = (initialEnergyBands[j] * uni.precisionAdj) /  f32(uni.rayCount);
     }
     var pos = startPos;
     var dir = dirInput;
@@ -261,7 +349,7 @@ fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (result.hit_listener) {
         for (var i : u32 = 0u; i < uni.energyBandCount; i++) {
             let e = result.energy[i];
-            let e_u32 = u32(e * PRECISION_ADJ);
+            let e_u32 = u32(e * uni.precisionAdj);
             atomicAdd(&listenerEnergyBands[i], e_u32);
         }
     }
