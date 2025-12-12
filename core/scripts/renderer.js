@@ -202,6 +202,14 @@ export class Renderer {
                 defaultRGB[2],
                 hide_alpha
             ]);
+
+            // loader.faceColors_CPU_Write[faceID] = this.rgba_to_u32([
+            //     defaultRGB[0],
+            //     defaultRGB[1],
+            //     defaultRGB[2],
+            //     hide_alpha
+            // ]);
+
         }
 
         loader.updateFaceColorBuffer();
@@ -233,15 +241,21 @@ export class Renderer {
     }
 
 
-    debug_u32_to_vec3(code, roomSize) {
-        const qx =  code         & 0x3FF;
-        const qy = (code >> 10) & 0x3FF;
-        const qz = (code >> 20) & 0x3FF; 
-        const x = (qx / 1023) * roomSize[0];
-        const y = (qy / 1023) * roomSize[1];
-        const z = (qz / 1023) * roomSize[2];
-        return [ x, y, z ];
+    debug_u32_to_vec3(code) {
+        const roomSize = this.loader.room_dimensions;
+
+        const qx =  code        & 0xFF;
+        const qy = (code >> 8)  & 0xFF;
+        const qz = (code >> 16) & 0xFF;
+        const id = (code >> 24) & 0xFF;
+
+        const x = (qx / 255) * roomSize[0];
+        const y = (qy / 255) * roomSize[1];
+        const z = (qz / 255) * roomSize[2];
+
+        return { pos: [x, y, z], id };
     }
+
 
     requestReload(){
         this.reload = true;
@@ -255,6 +269,43 @@ export class Renderer {
         this.loader.reload();
         this.reload = false;
     }
+
+
+    debugRayPositionTrace(face_data){
+        const loader = this.loader;
+        const settings = this.settings;
+        const hidden_walls = loader.hiddenWallFlags_CPU;
+
+        const faceCount = loader.faceCount;
+        const rayCount = settings.SIMULATION.ray_count;
+        
+        const messages = [];
+
+        for (let faceID = 0; faceID < faceCount; faceID++) {
+            const face = face_data[faceID];
+            const a = face.absorbedEnergy;
+            const b = face.bounceCount;
+            
+            if (b == 0) break;
+
+            const pos_data = this.debug_u32_to_vec3(b);
+
+            const [x, y, z] = pos_data.pos;
+            const msg =
+                `${pos_data.id}: [` +
+                `${x.toFixed(2)}, ` +
+                `${y.toFixed(2)}, ` +
+                `${z.toFixed(2)}]`;
+
+            messages.push(msg);
+                        
+        }
+
+        console.log(messages);
+        
+
+    }
+
 
     async renderFrame() {
         if (!this.initialized) return;
@@ -335,6 +386,7 @@ export class Renderer {
         
         this.updateColors(faces);
         this.updateSpherePositions();
+        //this.debugRayPositionTrace(faces);
         
 
         // ----------------------------------------------------

@@ -11,9 +11,9 @@
             "west" : false
         },
 
-        "ray_count" : 10000,
+        "ray_count" : 100000,
         "energy_bands" : 10,
-        "max_ray_steps" : 5000,
+        "max_ray_steps" : 2000,
         "voxel_scale_meters" : 0.1,
         "ray_energy_min" : 0.01,
         "emitter_position" : [8.5, 8.5, 8.5],

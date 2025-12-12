@@ -51,6 +51,7 @@ var<storage, read_write> listenerEnergyBands : array<atomic<u32>>;
 
 
 
+const MATERIAL_AIR : u32 = 0u;
 
 
 struct Material {
@@ -113,14 +114,33 @@ const materials : array<Material, 1> = array<Material, 1>(
 
 
 
+const MAX_RAY_DEPTH  : u32 = 6u;
+const MAX_STACK_SIZE : u32 = 24u;
+
+struct RayStackEntry {
+    pos   : vec3<f32>,
+    dir   : vec3<f32>,
+    energy: array<f32, MAX_BANDS>,
+    depth : u32,
+    material : u32
+};
 
 
+const refractiveIndex : array<f32, 2> = array<f32, 2>(
+    1.0000, // air
+    1.2000, // wall (generic solid)
+);
 
 
+const materialAttenuation : array<f32, 2> = array<f32, 2>(
+    0.001, // air
+    6.0, // wall
+);
 
-
-
-
+const interfaceAbsorption : array<f32, 2> = array<f32, 2>(
+    0.0, // air
+    0.05, // wall: 20% loss on reflection, zero transmission
+);
 
 
 
@@ -219,110 +239,290 @@ fn valid_voxel_pos(voxel_pos: vec3<i32>, room_dims: vec3<i32>) -> bool{
     return true;
 }
 
-// fn encode_pos(p : vec3<f32>) -> u32 {
-//     let nx = clamp(p.x / f32(uni.roomSize.x), 0.0, 1.0);
-//     let ny = clamp(p.y / f32(uni.roomSize.y), 0.0, 1.0);
-//     let nz = clamp(p.z / f32(uni.roomSize.z), 0.0, 1.0);
-//     let qx = u32(nx * 1023.0);
-//     let qy = u32(ny * 1023.0);
-//     let qz = u32(nz * 1023.0);
-//     return (qz << 20u) | (qy << 10u) | qx;
-// }
+fn debug_vec3_id_to_u32(p: vec3<f32>, id: u32) -> u32 {
+    let nx = clamp(p.x / f32(uni.roomSize.x), 0.0, 1.0);
+    let ny = clamp(p.y / f32(uni.roomSize.y), 0.0, 1.0);
+    let nz = clamp(p.z / f32(uni.roomSize.z), 0.0, 1.0);
+
+    let qx = u32(nx * 255.0);
+    let qy = u32(ny * 255.0);
+    let qz = u32(nz * 255.0);
+    let qi = id & 0xFFu;
+
+    return (qi << 24u) | (qz << 16u) | (qy << 8u) | qx;
+}
 
 
 
-struct RayResult {
-    dir : vec3<f32>,
-    energy : array<f32, MAX_BANDS>,
-    hit_listener : bool
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+struct RayResult { 
+    dir : vec3<f32>, 
+    energy : array<f32, MAX_BANDS>, 
+    hit_listener : bool 
 };
 
-fn trace_ray(
-    startPos : vec3<f32>,
-    dirInput : vec3<f32>,
-) -> RayResult {
+fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) -> RayResult {
 
-    let roomDims = vec3<i32>(i32(uni.roomSize.x), i32(uni.roomSize.y), i32(uni.roomSize.z));
+    let roomDims = vec3<i32>(
+        i32(uni.roomSize.x),
+        i32(uni.roomSize.y),
+        i32(uni.roomSize.z)
+    );
 
-    var ray_enery_bands : array<f32, MAX_BANDS>;
-    for (var j : u32 = 0u; j < uni.energyBandCount; j++) {
-        ray_enery_bands[j] = (initialEnergyBands[j] * uni.precisionAdj) /  f32(uni.rayCount);
+    var rayStack : array<RayStackEntry, MAX_STACK_SIZE>;
+    var stackTop : i32 = -1;
+
+    // ---- initial energy ----
+    var start_energy : array<f32, MAX_BANDS>;
+    for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+        start_energy[i] =
+            (initialEnergyBands[i] * uni.precisionAdj) /
+            f32(uni.rayCount);
     }
-    var pos = startPos;
-    var dir = dirInput;
-    var step = 0u;
 
+    // ---- push primary ray (air) ----
+    stackTop = 0;
+    rayStack[0] = RayStackEntry(
+        startPos,
+        normalize(dirInput),
+        start_energy,
+        0u,
+        MATERIAL_AIR
+    );
+
+    var final_dir = dirInput;
+    var final_energy = start_energy;
+    var hit_listener = false;
+
+    var insertion_ind = 0u;
+
+    // ===== RAY STACK LOOP =====
     loop {
-        if (step >= uni.maxSteps) { break; }
+        if (stackTop < 0) { break; }
 
-        let voxel = world_to_voxel(pos);
-        if (!valid_voxel_pos(voxel, roomDims)) {
-            break;
-        }
+        let ray = rayStack[stackTop];
+        stackTop--;
 
-        let info = dda_step(pos, dir, voxel);
-        let t = info.x;
-        let hitPos = pos + dir * t;
+        var pos = ray.pos;
+        var dir = ray.dir;
+        var ray_energy = ray.energy;
+        var curr_material = ray.material;
+        var step = 0u;
 
-        let axis = u32(info.y);
-        let N = get_face_normal(axis, dir);
-        let next = get_collided_voxel(axis, voxel, dir);
+        // ===== DDA LOOP =====
+        loop {
+            if (step >= uni.maxSteps) { break; }
 
-        if (!valid_voxel_pos(next, roomDims)) {
-            break;
-        }
+            let voxel = world_to_voxel(pos);
+            if (!valid_voxel_pos(voxel, roomDims)) { break; }
 
-        let nextID = get_voxelID(next, roomDims);
-        let material_id = materialID[nextID];
-        let isWall = material_id > 0u;
+            let info = dda_step(pos, dir, voxel);
+            let t = info.x;
+            let hitPos = pos + dir * t;
 
+            let axis = u32(info.y);
+            let next = get_collided_voxel(axis, voxel, dir);
+            if (!valid_voxel_pos(next, roomDims)) { break; }
 
-        var overall_energy = 0.0;
-        if (isWall) {
-            //update energy after collision
-            var energy_loss = 0.0;
-            for (var i : u32 = 0u; i < uni.energyBandCount; i++) {
-                energy_loss += ray_enery_bands[i];
-                ray_enery_bands[i] = ray_enery_bands[i] * 0.9;
-                energy_loss -= ray_enery_bands[i];
-                overall_energy += ray_enery_bands[i];
+            // ---- ENERGY CUTOFF (ray-local) ----
+            var total_energy = 0.0;
+            for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+                total_energy += ray_energy[i];
+            }
+            if (total_energy < uni.energyCutoff) {
+                break;
             }
 
-            //update face heatmap
-            let loc = local_face_index(axis, dir);
-            let faceIndex = voxel_to_face[nextID * 6u + loc];
-            atomicAdd(&stats[faceIndex].bounceCount, 1u);
-            atomicAdd(&stats[faceIndex].absorbedEnergy, u32(energy_loss));
+            let nextID = get_voxelID(next, roomDims);
+            let next_material = materialID[nextID];
 
-            //update dir
-            dir = normalize(dir - 2.0 * dot(dir, N) * N);
-        } else {
-            //travel through air
+            // ---- DEBUG (kept exactly) ----
+            let debug_pos_id = debug_vec3_id_to_u32(pos, ray.depth);
+            atomicAdd(&stats[insertion_ind].bounceCount, debug_pos_id);
+            insertion_ind++;
 
-            //update energy through air
-            for (var i : u32 = 0u; i < uni.energyBandCount; i++) {
-                ray_enery_bands[i] = ray_enery_bands[i] - 0.0;
-                overall_energy += ray_enery_bands[i];
+            let distance_m = t * uni.voxelScale;
+
+            // ---- SAME MATERIAL: distance attenuation + continue ----
+            if (next_material == curr_material) {
+
+                let att = exp(-materialAttenuation[curr_material] * distance_m);
+                for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+                    ray_energy[i] *= att;
+                }
+
+                pos = hitPos + dir * 1e-4;
+                step++;
+                continue;
             }
-        }
 
-    
-        if (overall_energy < uni.energyCutoff){
+            // ===== MATERIAL BOUNDARY =====
+
+            // ---- attenuation up to boundary ----
+            let att = exp(-materialAttenuation[curr_material] * distance_m);
+
+            var boundary_energy = ray_energy;
+            for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+                boundary_energy[i] *= att;
+            }
+
+            let n1 = refractiveIndex[curr_material];
+            let n2 = refractiveIndex[next_material];
+
+            // ---- correct normal orientation ----
+            var N = get_face_normal(axis, dir);
+            if (dot(N, dir) > 0.0) {
+                N = -N;
+            }
+
+            let cos_i = clamp(-dot(N, dir), 0.0, 1.0);
+            let eta = n1 / n2;
+            let sin2_t = eta * eta * (1.0 - cos_i * cos_i);
+
+            // ---- Fresnel (Schlick) ----
+            let R0 = pow((n1 - n2) / (n1 + n2), 2.0);
+            let R = R0 + (1.0 - R0) * pow(1.0 - cos_i, 5.0);
+            let T = 1.0 - R;
+
+            let survive = 1.0 - interfaceAbsorption[next_material];
+
+
+            // ----- FACE ABSORPTION (correct side) -----
+            let enterFace = local_face_index(axis, dir);
+            let exitFace  = enterFace ^ 1u;
+
+            var faceVoxelID : u32;
+            var faceIndex   : u32;
+
+            // If entering an absorbing material → credit next voxel's entry face
+            // If exiting an absorbing material → credit current voxel's exit face
+            if (interfaceAbsorption[next_material] > 0.0) {
+
+                faceVoxelID = get_voxelID(next, roomDims);
+                faceIndex = voxel_to_face[faceVoxelID * 6u + enterFace];
+
+            } else if (interfaceAbsorption[curr_material] > 0.0) {
+
+                faceVoxelID = get_voxelID(voxel, roomDims);
+                faceIndex = voxel_to_face[faceVoxelID * 6u + exitFace];
+
+            } else {
+                // no absorbing material involved
+                faceIndex = 0u;
+            }
+
+            // ----- accumulate absorbed energy -----
+            if (faceIndex != 0u) {
+
+                var absorbed = 0.0;
+                let absorbCoeff =
+                    select(interfaceAbsorption[curr_material],
+                        interfaceAbsorption[next_material],
+                        interfaceAbsorption[next_material] > 0.0);
+
+                for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+                    absorbed += boundary_energy[i] * absorbCoeff;
+                }
+
+                atomicAdd(&stats[faceIndex].absorbedEnergy, u32(absorbed));
+            }
+
+
+
+
+
+
+
+
+            if (ray.depth < MAX_RAY_DEPTH &&
+                stackTop < i32(MAX_STACK_SIZE - 2u)) {
+
+                // ---- reflected ray ----
+                let reflDir = normalize(dir + 2.0 * cos_i * N);
+                var refl_energy = boundary_energy;
+                for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+                    refl_energy[i] *= R * survive;
+                }
+
+                stackTop++;
+                rayStack[stackTop] = RayStackEntry(
+                    hitPos + N * 1e-3,
+                    reflDir,
+                    refl_energy,
+                    ray.depth + 1u,
+                    curr_material
+                );
+
+                // ---- refracted ray ----
+                if (sin2_t <= 1.0) {
+                    let cos_t = sqrt(1.0 - sin2_t);
+                    let refrDir =
+                        normalize(eta * dir + (eta * cos_i - cos_t) * N);
+
+                    var refr_energy = boundary_energy;
+                    for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+                        refr_energy[i] *= T * survive;
+                    }
+
+                    stackTop++;
+                    rayStack[stackTop] = RayStackEntry(
+                        hitPos - N * 1e-3,
+                        refrDir,
+                        refr_energy,
+                        ray.depth + 1u,
+                        next_material
+                    );
+                }
+            }
+
             break;
         }
-
-        pos = hitPos + dir * 1e-4;
-
-        let dist = distance(pos, uni.listenerPos);
-        if (dist <= uni.listenerRadius) {
-            return RayResult(dir, ray_enery_bands, true);
-        }
-
-        step++;
     }
 
-    return RayResult(dir, ray_enery_bands, false);
+    return RayResult(final_dir, final_energy, hit_listener);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 fn generate_direction_on_sphere(id : u32, max_rays : u32) -> vec3<f32>{
     let N = f32(max_rays);
