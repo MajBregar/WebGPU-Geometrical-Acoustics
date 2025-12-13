@@ -168,13 +168,16 @@ export class Renderer {
     updateColors(face_data) {
         const loader = this.loader;
         const settings = this.settings;
-        const hidden_walls = loader.hiddenWallFlags_CPU;
+        const sim = settings.SIMULATION;
 
-        const defaultRGB = [120, 120, 120];
+        const wall_rgb = [120, 120, 120];
+        const hidden_walls = loader.hiddenWallFlags_CPU;
+        const enable_heatmap = sim.show_heatmap;
+        const enable_bounce_heatmap = sim.show_bounces_instead;
+
         const faceCount = loader.faceCount;
-        const rayCount = settings.SIMULATION.ray_count;
-        const vis_coef = settings.SIMULATION.heatmap_sensitivity;
-        const unit_precision_adjustment = settings.SIMULATION.unit_precision_adjustment;
+        const vis_coef = sim.heatmap_sensitivity;
+        const unit_precision_adjustment = sim.unit_precision_adjustment;
         
         var starting_energy = 0.0;
         for (let i = 0; i < loader.energyBands_CPU.length; i++){
@@ -182,34 +185,25 @@ export class Renderer {
         }
         starting_energy = starting_energy * unit_precision_adjustment;
         
-
         for (let faceID = 0; faceID < faceCount; faceID++) {
             const face = face_data[faceID];
-
             const hide_alpha = hidden_walls[faceID] ? 0 : 255;
+            const face_color = [wall_rgb[0], wall_rgb[1], wall_rgb[2], hide_alpha];
 
-            const enery_absorbed = face.absorbedEnergy;
+            if (enable_heatmap && enable_bounce_heatmap == false) {
+                const enery_absorbed = face.absorbedEnergy;
+                const energy_color = (enery_absorbed / starting_energy) * Math.pow(10, vis_coef) * (255 - wall_rgb[0]);
+                
+                face_color[0] = wall_rgb[0] + (energy_color > (255 - wall_rgb[0]) ? (255 - wall_rgb[0]) : energy_color);
 
-            const energy_color = (enery_absorbed / starting_energy) * Math.pow(10, vis_coef) * 255;
+            } else if (enable_heatmap && enable_bounce_heatmap == true) {
+                const bounces = face.bounceCount;
+                const bounce_color = (bounces * Math.pow(10, -(10 - vis_coef))) * (255 - wall_rgb[1]);
 
-            const bounces = face.bounceCount;
-            const bounce_color = (bounces / 10) * 255;
-            
-            
-            loader.faceColors_CPU_Write[faceID] = this.rgba_to_u32([
-                energy_color >= 255 ? 255 : energy_color,
-                defaultRGB[1],
-                defaultRGB[2],
-                hide_alpha
-            ]);
+                face_color[1] = wall_rgb[1] + (bounce_color > (255 - wall_rgb[1]) ? (255 - wall_rgb[1]) : bounce_color);
+            }
 
-            // loader.faceColors_CPU_Write[faceID] = this.rgba_to_u32([
-            //     defaultRGB[0],
-            //     defaultRGB[1],
-            //     defaultRGB[2],
-            //     hide_alpha
-            // ]);
-
+            loader.faceColors_CPU_Write[faceID] = this.rgba_to_u32(face_color);
         }
 
         loader.updateFaceColorBuffer();
@@ -382,6 +376,7 @@ export class Renderer {
 
         const faces = await loader.readFaceStats();
         const listenerBands = await loader.readListenerBands();
+        
         this.listenerEnergy = this.sound_processor.process_listener_sound(listenerBands);
         
         this.updateColors(faces);

@@ -13,6 +13,7 @@ export class UI {
         this.initEmitterListenerSliders();
         this.initWallCheckboxes();
         this.initReloadButton();
+        this.initHeatmapCheckboxes();
 
         this.inputGraph  = this.createGraph("energyPlot1");
         this.outputGraph = this.createGraph("energyPlot2");
@@ -143,6 +144,9 @@ export class UI {
             xv: document.getElementById("lx_val"),
             yv: document.getElementById("ly_val"),
             zv: document.getElementById("lz_val"),
+        };
+
+        const heatmap = {
             sens: document.getElementById("lsens_slider"),
             sensv: document.getElementById("lsens_val")
         };
@@ -172,8 +176,8 @@ export class UI {
         listen.xv.textContent = lx0; listen.yv.textContent = ly0; listen.zv.textContent = lz0;
 
         const visualization_sensitivity = settings.SIMULATION.heatmap_sensitivity;
-        listen.sens.value = visualization_sensitivity;
-        listen.sensv.textContent = visualization_sensitivity;
+        heatmap.sens.value = visualization_sensitivity;
+        heatmap.sensv.textContent = visualization_sensitivity;
 
         function updateEmitter() {
             const x = Number(emit.x.value);
@@ -191,14 +195,18 @@ export class UI {
             const x = Number(listen.x.value);
             const y = Number(listen.y.value);
             const z = Number(listen.z.value);
-            const s = Number(listen.sens.value);
 
             listen.xv.textContent = x;
             listen.yv.textContent = y;
             listen.zv.textContent = z;
-            listen.sensv.textContent = s;
 
             settings.SIMULATION.listener_position = [x, y, z];
+        }
+
+        function updateHeatmap() {
+            const s = Number(heatmap.sens.value);
+            heatmap.sensv.textContent = s;
+
             settings.SIMULATION.heatmap_sensitivity = s;
         }
 
@@ -219,7 +227,8 @@ export class UI {
         listen.x.addEventListener("input", updateListener);
         listen.y.addEventListener("input", updateListener);
         listen.z.addEventListener("input", updateListener);
-        listen.sens.addEventListener("input", updateListener);
+
+        heatmap.sens.addEventListener("input", updateHeatmap);
 
 
         debug.x.addEventListener("input", updateDebug);
@@ -261,6 +270,56 @@ export class UI {
             cb.addEventListener("change", updateCheckboxes);
         });
     }
+
+
+    initHeatmapCheckboxes() {
+
+        const settings = this.settings;
+
+        const cbDisabled = document.getElementById("hm_disabled");
+        const cbAbsorbed = document.getElementById("hm_absorbed");
+        const cbBounces  = document.getElementById("hm_bounces");
+
+        function setExclusive(active) {
+            cbDisabled.checked = active === "disabled";
+            cbAbsorbed.checked = active === "absorbed";
+            cbBounces.checked  = active === "bounces";
+        }
+
+        function updateFromUI(e) {
+            const source = e.target;
+            
+            if (source === cbDisabled) {
+                setExclusive("disabled");
+                settings.SIMULATION.show_heatmap = false;
+                settings.SIMULATION.show_bounces_instead = false;
+            } 
+            else if (source === cbAbsorbed) {
+                setExclusive("absorbed");
+                settings.SIMULATION.show_heatmap = true;
+                settings.SIMULATION.show_bounces_instead = false;
+            } 
+            else if (source === cbBounces) {
+                setExclusive("bounces");
+                settings.SIMULATION.show_heatmap = true;
+                settings.SIMULATION.show_bounces_instead = true;
+            }
+        }
+
+        if (!settings.SIMULATION.show_heatmap) {
+            setExclusive("disabled");
+        } else if (settings.SIMULATION.show_bounces_instead) {
+            setExclusive("bounces");
+        } else {
+            setExclusive("absorbed");
+        }
+
+        cbDisabled.addEventListener("change", updateFromUI);
+        cbAbsorbed.addEventListener("change", updateFromUI);
+        cbBounces.addEventListener("change", updateFromUI);
+    }
+
+
 
     initReloadButton() {
         const btn = document.getElementById("reloadBtn");

@@ -19,8 +19,8 @@ A simple WebGPU-based simulation of geometrical acoustics.
 - Diffuse scattering (optional but recommended)
 - Transmission for wavelengths ≥ object size (simple passthrough)
 - Diffraction at edges (single ray bend OR child ray)
-- Max bounce count (prevent infinite recursion)
 - Per-ray delay = distance / speed of sound
 
 - Accumulate energy per direction at listener (cubemap or equivalent)
 - Energy cutoff threshold (stop low-energy rays)
+- Max bounce count (prevent infinite recursion)

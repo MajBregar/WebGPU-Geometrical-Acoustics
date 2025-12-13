@@ -113,3 +113,36 @@ html, body {
     margin: 0;
     padding: 0;
 }
+
+
+
+
+
+
+
+#heatmap-controls {
+    margin-top: 8px;
+}
+
+#heatmap-controls h3 {
+    margin-bottom: 6px;
+}
+
+#heatmap-controls .heatmap-modes {
+    display: flex;
+    gap: 12px;
+    margin-top: 10px;
+    align-items: flex-start;
+    font-size: 0.8em;
+}
+
+#heatmap-controls .heatmap-mode {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+#heatmap-controls .heatmap-mode span {
+    white-space: nowrap;
+}

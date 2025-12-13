@@ -167,6 +167,7 @@ export class Loader {
     async readListenerBands() {
         const buf = this.listener_GPU_ReadBack;
         const count = this.energyBandCount;
+        const adj = this.settings.SIMULATION.unit_precision_adjustment;
 
         await buf.mapAsync(GPUMapMode.READ);
         const mapped = buf.getMappedRange();
@@ -175,7 +176,7 @@ export class Loader {
         const out = this.listenerBands_CPU;
 
         for (let i = 0; i < count; i++) {
-            out[i] = u32[i] / 1000000;
+            out[i] = u32[i] / adj;            
         }
 
         buf.unmap();
@@ -343,7 +344,7 @@ export class Loader {
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
         });
 
-        this.listenerBands_CPU = new Uint32Array(count);
+        this.listenerBands_CPU = new Float32Array(count);
 
 
         this.listenerClear_CPU = new Uint32Array(count);

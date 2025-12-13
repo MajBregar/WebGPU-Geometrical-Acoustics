@@ -90,11 +90,36 @@
         </label>
         <input id="lz_slider" type="range" min="0" max="128" value="0" step="0.01">
 
-        <label>
-            VizSens: <span id="lsens_val">1</span>
-        </label>
-        <input id="lsens_slider" type="range" min="0" max="7" value="0" step="0.01">
     </div>
+
+    <div id="heatmap-controls">
+        <h3>Heatmap Controls</h3>
+
+        <label>
+            Visualization Sens: <span id="lsens_val">1</span>
+        </label>
+        <input id="lsens_slider" type="range" min="0" max="10" value="0" step="0.01">
+
+        <div class="heatmap-modes">
+            <label class="heatmap-mode">
+                <span>Disabled</span>
+                <input type="checkbox" id="hm_disabled">
+            </label>
+
+            <label class="heatmap-mode">
+                <span>Absorbed</span>
+                <input type="checkbox" id="hm_absorbed">
+            </label>
+
+            <label class="heatmap-mode">
+                <span>Bounces</span>
+                <input type="checkbox" id="hm_bounces">
+            </label>
+        </div>
+    </div>
+
+
+
 
 
     <div id="debug-sliders">
