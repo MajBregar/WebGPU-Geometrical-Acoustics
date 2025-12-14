@@ -47,7 +47,7 @@ var<storage, read_write> listenerEnergyBands : array<atomic<u32>>;
 
 
 const MAX_RAY_DEPTH  : u32 = 6u;
-const MAX_STACK_SIZE : u32 = 24u;
+const MAX_STACK_SIZE : u32 = 1u;
 
 struct RayStackEntry {
     pos   : vec3<f32>,
@@ -64,44 +64,60 @@ struct RayStackEntry {
 const MATERIAL_AIR_ID : u32 = 0u;
 
 struct Material {
-    absorption   : array<f32, MAX_BANDS>,
-    reflection   : array<f32, MAX_BANDS>,
-    transmission   : array<f32, MAX_BANDS>,
-    attenuation : array<f32, MAX_BANDS>,
-    refractive_index : f32
+    absorption        : array<f32, MAX_BANDS>, // surface absorption
+    reflection        : array<f32, MAX_BANDS>, // surface reflection
+    transmission      : array<f32, MAX_BANDS>, // surface transmission
+    attenuation       : array<f32, MAX_BANDS>, // volume attenuation
+    diffuse_ratio     : array<f32, MAX_BANDS>, // fraction of reflection that is diffuse
+    diffraction_ratio : array<f32, MAX_BANDS>, // low-freq diffraction participation
+    refractive_index  : f32
 };
 
+
 const airMaterial : Material = Material(
-    // absorption (air does not absorb at boundaries)
+    // absorption
     array<f32, MAX_BANDS>(
         0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0, 0.0, 0.0, 0.0
     ),
 
-    // reflection (none at air-air boundary)
+    // reflection
     array<f32, MAX_BANDS>(
         0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0, 0.0, 0.0, 0.0
     ),
 
-    // transmission (all energy passes through)
+    // transmission
     array<f32, MAX_BANDS>(
         1.0, 1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0, 1.0
     ),
 
+    // attenuation
     array<f32, MAX_BANDS>(
         0.0001, 0.0001, 0.00015, 0.0002, 0.0003,
         0.0005, 0.0008, 0.0012, 0.0020, 0.0035
     ),
 
-    // refractive index (air)
+    // diffuse ratio
+    array<f32, MAX_BANDS>(
+        0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0
+    ),
+
+    // diffraction ratio
+    array<f32, MAX_BANDS>(
+        0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0
+    ),
+
+    // refractive index
     1.0003
 );
 
 
 const concreteMaterial : Material = Material(
-    // absorption (measured values are realistic)
+    // absorption
     array<f32, MAX_BANDS>(
         0.01, 0.01, 0.02, 0.02, 0.03,
         0.04, 0.05, 0.07, 0.09, 0.10
@@ -113,21 +129,33 @@ const concreteMaterial : Material = Material(
         0.92, 0.90, 0.87, 0.85, 0.83
     ),
 
-    // transmission (very small)
+    // transmission
     array<f32, MAX_BANDS>(
         0.01, 0.01, 0.02, 0.03, 0.03,
         0.04, 0.05, 0.06, 0.06, 0.07
     ),
 
+    // attenuation (inside solid concrete)
     array<f32, MAX_BANDS>(
         5.0, 5.0, 6.0, 6.0, 7.0,
         8.0, 9.0, 10.0, 12.0, 14.0
     ),
 
-    // refractive index (air → concrete boundary)
+    // diffuse ratio (rough surface → more diffuse at high freq)
+    array<f32, MAX_BANDS>(
+        0.15, 0.15, 0.20, 0.25, 0.30,
+        0.40, 0.50, 0.60, 0.70, 0.80
+    ),
+
+    // diffraction ratio (dominant at low frequencies)
+    array<f32, MAX_BANDS>(
+        0.80, 0.75, 0.65, 0.50, 0.35,
+        0.20, 0.10, 0.05, 0.02, 0.00
+    ),
+
+    // refractive index
     1.2
 );
-
 
 
 const materials : array<Material, 2> = array<Material, 2>(
@@ -283,8 +311,51 @@ fn debug_vec3_id_to_u32(p: vec3<f32>, id: u32) -> u32 {
 
 
 
+fn should_diffract(dir: vec3<f32>, curr_voxel_id: vec3<i32>, next_voxel_id: u32) -> bool {
+    return false;
+}
+
+fn cosine_hemisphere(N: vec3<f32>, rnd: vec2<f32>) -> vec3<f32> {
+    let r = sqrt(rnd.x);
+    let phi = 2.0 * 3.14159265359 * rnd.y;
+
+    let x = r * cos(phi);
+    let y = r * sin(phi);
+    let z = sqrt(max(0.0, 1.0 - rnd.x));
+
+    let up = select(
+        vec3<f32>(0.0, 0.0, 1.0),
+        vec3<f32>(1.0, 0.0, 0.0),
+        abs(N.z) > 0.999
+    );
+
+    let T = normalize(cross(up, N));
+    let B = cross(N, T);
+    return normalize(x * T + y * B + z * N);
+}
 
 
+
+fn diffract_dir_stub(dir: vec3<f32>, N: vec3<f32>) -> vec3<f32> {
+    // placeholder: bend into tangent plane
+    let tangent = normalize(dir - dot(dir, N) * N);
+    return normalize(mix(dir, tangent, 0.5));
+}
+
+
+fn hash_u32(x: u32) -> u32 {
+    var v = x;
+    v ^= v >> 16;
+    v *= 0x7feb352du;
+    v ^= v >> 15;
+    v *= 0x846ca68bu;
+    v ^= v >> 16;
+    return v;
+}
+
+fn rand_f32(seed: u32) -> f32 {
+    return f32(hash_u32(seed)) / 4294967296.0;
+}
 
 
 
@@ -406,7 +477,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                 break;
             }
 
-            // ---- ABSORPTION (REMOVE ENERGY) ----
+            // ---- ABSORPTION ----
             var absorbed_sum = 0.0;
             for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
                 let absorbed = boundary_energy[i] * materials[boundary_material_id].absorption[i];
@@ -433,47 +504,149 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
             let R  = R0 + (1.0 - R0) * pow(1.0 - cos_i, 5.0);
             let T  = 1.0 - R;
 
-            if (ray.depth < MAX_RAY_DEPTH && stackTop < i32(MAX_STACK_SIZE - 2u)) {
 
-                // ---- REFLECTED RAY ----
+
+
+
+
+
+
+            if (ray.depth < MAX_RAY_DEPTH && stackTop < i32(MAX_STACK_SIZE - 1u)) {
+
+                let mat = materials[boundary_material_id];
+
+                // ============================================================
+                // REFLECTION: SPECULAR + DIFFUSE (ENERGY COMPUTE FIRST)
+                // ============================================================
+
                 let reflDir = normalize(dir + 2.0 * cos_i * N);
-                var refl_energy = boundary_energy;
+
+                var spec_energy = boundary_energy;
+                var diff_energy = boundary_energy;
+
+                var spec_sum = 0.0;
+                var diff_sum = 0.0;
 
                 for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
-                    refl_energy[i] *= R * materials[boundary_material_id].reflection[i];
+                    let refl = R * mat.reflection[i];
+                    let kd   = mat.diffuse_ratio[i];
+                    let ks   = 1.0 - kd;
+
+                    let s = spec_energy[i] * refl * ks;
+                    let d = diff_energy[i] * refl * kd;
+
+                    spec_energy[i] = s;
+                    diff_energy[i] = d;
+
+                    spec_sum += s;
+                    diff_sum += d;
                 }
 
-                stackTop++;
-                rayStack[stackTop] = RayStackEntry(
-                    hitPos + N * 1e-3,
-                    reflDir,
-                    refl_energy,
-                    ray.depth + 1u,
-                    curr_material
-                );
+                // ============================================================
+                // REFRACTION / TRANSMISSION (ENERGY COMPUTE FIRST)
+                // ============================================================
 
-                // ---- REFRACTED / TRANSMITTED RAY ----
+                var refr_energy = boundary_energy;
+                var refr_sum = 0.0;
+                var has_refr = false;
+
                 if (sin2_t <= 1.0) {
-                    let cos_t = sqrt(1.0 - sin2_t);
-                    let refrDir =
-                        normalize(eta * dir + (eta * cos_i - cos_t) * N);
-
-                    var refr_energy = boundary_energy;
                     for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
-                        refr_energy[i] *= T * materials[boundary_material_id].transmission[i];
+                        let e = refr_energy[i] * T * mat.transmission[i];
+                        refr_energy[i] = e;
+                        refr_sum += e;
+                    }
+                    has_refr = true;
+                }
+
+                // ============================================================
+                // SELECT RAYS BASED ON AVAILABLE STACK SPACE
+                // ============================================================
+
+                let free_slots = i32(MAX_STACK_SIZE) - stackTop - 1;
+                let spec_ok = spec_sum > uni.energyCutoff;
+                let diff_ok = diff_sum > uni.energyCutoff;
+                let refr_ok = refr_sum > uni.energyCutoff && has_refr;
+
+                // PUSH RAYS BY ENERGY SUM
+                for (var k = 0; k < free_slots; k++) {
+
+                    var best = 0; // 1=spec, 2=diff, 3=refr
+                    var best_val = 0.0;
+
+                    if (spec_ok && spec_sum > best_val) {
+                        best = 1; best_val = spec_sum;
+                    }
+                    if (diff_ok && diff_sum > best_val) {
+                        best = 2; best_val = diff_sum;
+                    }
+                    if (refr_ok && refr_sum > best_val) {
+                        best = 3; best_val = refr_sum;
                     }
 
-                    stackTop++;
-                    rayStack[stackTop] = RayStackEntry(
-                        hitPos - N * 1e-3,
-                        refrDir,
-                        refr_energy,
-                        ray.depth + 1u,
-                        next_material
-                    );
+                    if (best == 0) {
+                        break; // nothing left to push
+                    }
+
+                    // ---- SPECULAR ----
+                    if (best == 1) {
+                        stackTop++;
+                        rayStack[stackTop] = RayStackEntry(
+                            hitPos + N * 1e-3,
+                            reflDir,
+                            spec_energy,
+                            ray.depth + 1u,
+                            curr_material
+                        );
+                        spec_sum = 0.0;
+                    }
+
+                    // ---- DIFFUSE ----
+                    else if (best == 2) {
+                        let baseSeed = 1234567u;
+                        let rnd = vec2<f32>(
+                            rand_f32(baseSeed),
+                            rand_f32(baseSeed ^ 0x9e3779b9u)
+                        );
+                        let diffDir = cosine_hemisphere(N, rnd);
+
+                        stackTop++;
+                        rayStack[stackTop] = RayStackEntry(
+                            hitPos + N * 1e-3,
+                            diffDir,
+                            diff_energy,
+                            ray.depth + 1u,
+                            curr_material
+                        );
+                        diff_sum = 0.0;
+                    }
+
+                    // ---- REFRACTION ----
+                    else {
+                        let cos_t = sqrt(1.0 - sin2_t);
+                        let refrDir = normalize(
+                            eta * dir + (eta * cos_i - cos_t) * N
+                        );
+
+                        var finalDir = refrDir;
+                        if (should_diffract(dir, voxel, nextID)) {
+                            finalDir = diffract_dir_stub(refrDir, N);
+                        }
+
+                        stackTop++;
+                        rayStack[stackTop] = RayStackEntry(
+                            hitPos - N * 1e-3,
+                            finalDir,
+                            refr_energy,
+                            ray.depth + 1u,
+                            next_material
+                        );
+                        refr_sum = 0.0;
+                    }
                 }
             }
 
+            //BREAK OUT OF RAY LOOP AND GET NEW RAY
             break;
         }
 
