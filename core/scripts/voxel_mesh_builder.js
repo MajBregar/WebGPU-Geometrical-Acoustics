@@ -1,9 +1,9 @@
-import { MATERIAL_IDS } from "./room_generation.js";
 
 export class VoxelMeshBuilder {
 
-    constructor(dimensions) {
+    constructor(dimensions, materials) {
         this.dimensions = dimensions;
+        this.materials = materials;
         this.faces = [
             { // +X
                 dir: [1, 0, 0],
@@ -119,13 +119,15 @@ export class VoxelMeshBuilder {
 
         const face_2_voxel = [];
 
-        function isSolidVoxel(voxelID) {
-            return voxelID !== MATERIAL_IDS.AIR;
+        const MATERIAL_AIR_ID = 0;
+
+        function isSolidVoxel(materialID) {
+            return materialID !== MATERIAL_AIR_ID;
         }
 
         function isAirAt(index) {
             if (index < 0 || index >= voxelCount) return true;
-            return voxels[index] === MATERIAL_IDS.AIR;
+            return voxels[index] === MATERIAL_AIR_ID;
         }
 
         const dirs = [
@@ -142,10 +144,9 @@ export class VoxelMeshBuilder {
                 for (let x = 0; x < sx; x++) {
 
                     const v = z * sy * sx + y * sx + x;
+                    const materialID = voxels[v];
 
-                    const voxelID = voxels[v];
-
-                    if (!isSolidVoxel(voxelID)) {
+                    if (!isSolidVoxel(materialID)) {
                         continue;
                     }
 
@@ -163,7 +164,8 @@ export class VoxelMeshBuilder {
                             ? -1
                             : (nz * sy * sx + ny * sx + nx);
 
-                        const exposed = (neighbor === -1) || isAirAt(neighbor);
+                        const exposed =
+                            (neighbor === -1) || isAirAt(neighbor);
 
                         if (exposed) {
                             const newFaceID = face_2_voxel.length;
@@ -180,6 +182,7 @@ export class VoxelMeshBuilder {
             f2v: face_2_voxel
         };
     }
+
 
 
 
@@ -287,11 +290,6 @@ export class VoxelMeshBuilder {
 
         return mask;
     }
-
-
-
-
-
 
 
 }

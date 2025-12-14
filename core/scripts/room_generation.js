@@ -1,12 +1,19 @@
-export const MATERIAL_IDS = {
-    AIR:  0,
-    WALL: 1
-};
 
-export function generateRoom(room_dimensions) {
+export function generateRoom(room_dimensions, materials) {
     const sx = room_dimensions[0];
     const sy = room_dimensions[1];
     const sz = room_dimensions[2];
+
+    const MATERIAL_AIR = 0;
+    let MATERIAL_WALL = -1;
+    for (let i = 1; i < materials.length; i++) {
+        MATERIAL_WALL = i;
+        break;
+    }
+
+    if (MATERIAL_WALL === -1) {
+        throw new Error("No non-air material available for walls");
+    }
 
     const voxelData = new Uint32Array(sx * sy * sz);
 
@@ -25,7 +32,6 @@ export function generateRoom(room_dimensions) {
     const doorZcenter = Math.floor(sz / 4);
     const doorZmin = doorZcenter - Math.floor(DOOR_WIDTH / 2);
     const doorZmax = doorZmin + DOOR_WIDTH - 1;
-
 
     const RIGHT_ROOM_WALL_Z = Math.floor(sz * 0.65);
 
@@ -74,10 +80,9 @@ export function generateRoom(room_dimensions) {
              isOuterWall ||
              isMiddleWall ||
              isRightRoomWall)
-            ? MATERIAL_IDS.WALL
-            : MATERIAL_IDS.AIR;
+            ? MATERIAL_WALL
+            : MATERIAL_AIR;
     }
 
     return voxelData;
 }
-

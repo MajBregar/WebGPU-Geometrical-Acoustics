@@ -1,8 +1,3 @@
-struct FaceStats {
-    bounceCount    : atomic<u32>,
-    absorbedEnergy : atomic<u32>
-};
-
 struct RayUniforms {
     roomSize    : vec3<u32>,
     maxSteps  : u32,
@@ -21,7 +16,33 @@ struct RayUniforms {
     precisionAdj : f32
 };
 
+struct FaceStats {
+    bounceCount    : atomic<u32>,
+    absorbedEnergy : atomic<u32>
+};
+
+struct Material {
+    absorption        : array<f32, MAX_BANDS>, // surface absorption
+    reflection        : array<f32, MAX_BANDS>, // surface reflection
+    transmission      : array<f32, MAX_BANDS>, // surface transmission
+    attenuation       : array<f32, MAX_BANDS>, // volume attenuation
+    diffusion         : array<f32, MAX_BANDS>, // percentage of reflection that is diffuse
+    diffraction       : array<f32, MAX_BANDS>, // low-freq diffraction participation
+    refractive_index  : f32                    // coefficient for snells law
+};
+
+struct RayStackEntry {
+    pos   : vec3<f32>,
+    dir   : vec3<f32>,
+    energy: array<f32, MAX_BANDS>,
+    depth : u32,
+    material : u32
+};
+
 const MAX_BANDS: u32 = 10;
+const MATERIAL_AIR_ID : u32 = 0u;
+const MAX_RAY_DEPTH  : u32 = 6u;
+const MAX_STACK_SIZE : u32 = 1u;
 
 @group(0) @binding(0)
 var<uniform> uni : RayUniforms;
@@ -41,140 +62,14 @@ var<storage, read> initialEnergyBands : array<f32>;
 @group(0) @binding(5)
 var<storage, read_write> listenerEnergyBands : array<atomic<u32>>;
 
+@group(0) @binding(6)
+var<storage, read> materials : array<Material>;
 
 
 
-
-
-const MAX_RAY_DEPTH  : u32 = 6u;
-const MAX_STACK_SIZE : u32 = 1u;
-
-struct RayStackEntry {
-    pos   : vec3<f32>,
-    dir   : vec3<f32>,
-    energy: array<f32, MAX_BANDS>,
-    depth : u32,
-    material : u32
-};
-
-
-
-
-
-const MATERIAL_AIR_ID : u32 = 0u;
-
-struct Material {
-    absorption        : array<f32, MAX_BANDS>, // surface absorption
-    reflection        : array<f32, MAX_BANDS>, // surface reflection
-    transmission      : array<f32, MAX_BANDS>, // surface transmission
-    attenuation       : array<f32, MAX_BANDS>, // volume attenuation
-    diffuse_ratio     : array<f32, MAX_BANDS>, // fraction of reflection that is diffuse
-    diffraction_ratio : array<f32, MAX_BANDS>, // low-freq diffraction participation
-    refractive_index  : f32
-};
-
-
-const airMaterial : Material = Material(
-    // absorption
-    array<f32, MAX_BANDS>(
-        0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0
-    ),
-
-    // reflection
-    array<f32, MAX_BANDS>(
-        0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0
-    ),
-
-    // transmission
-    array<f32, MAX_BANDS>(
-        1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0
-    ),
-
-    // attenuation
-    array<f32, MAX_BANDS>(
-        0.0001, 0.0001, 0.00015, 0.0002, 0.0003,
-        0.0005, 0.0008, 0.0012, 0.0020, 0.0035
-    ),
-
-    // diffuse ratio
-    array<f32, MAX_BANDS>(
-        0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0
-    ),
-
-    // diffraction ratio
-    array<f32, MAX_BANDS>(
-        0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0
-    ),
-
-    // refractive index
-    1.0003
-);
-
-
-const concreteMaterial : Material = Material(
-    // absorption
-    array<f32, MAX_BANDS>(
-        0.01, 0.01, 0.02, 0.02, 0.03,
-        0.04, 0.05, 0.07, 0.09, 0.10
-    ),
-
-    // reflection
-    array<f32, MAX_BANDS>(
-        0.98, 0.98, 0.96, 0.95, 0.94,
-        0.92, 0.90, 0.87, 0.85, 0.83
-    ),
-
-    // transmission
-    array<f32, MAX_BANDS>(
-        0.01, 0.01, 0.02, 0.03, 0.03,
-        0.04, 0.05, 0.06, 0.06, 0.07
-    ),
-
-    // attenuation (inside solid concrete)
-    array<f32, MAX_BANDS>(
-        5.0, 5.0, 6.0, 6.0, 7.0,
-        8.0, 9.0, 10.0, 12.0, 14.0
-    ),
-
-    // diffuse ratio (rough surface → more diffuse at high freq)
-    array<f32, MAX_BANDS>(
-        0.15, 0.15, 0.20, 0.25, 0.30,
-        0.40, 0.50, 0.60, 0.70, 0.80
-    ),
-
-    // diffraction ratio (dominant at low frequencies)
-    array<f32, MAX_BANDS>(
-        0.80, 0.75, 0.65, 0.50, 0.35,
-        0.20, 0.10, 0.05, 0.02, 0.00
-    ),
-
-    // refractive index
-    1.2
-);
-
-
-const materials : array<Material, 2> = array<Material, 2>(
-    airMaterial,
-    concreteMaterial
-);
-
-
-
-
-
-
-
-
-
-
-
-
-
+// ============================================================
+// DDA HELPERS
+// ============================================================
 
 fn sign_float(x : f32) -> f32 {
     return select(-1.0, 1.0, x >= 0.0);
@@ -240,9 +135,6 @@ fn opposite_face_index(f: u32) -> u32 {
     }
 }
 
-
-
-
 fn get_face_normal(axis: u32, dir: vec3<f32>) -> vec3<f32>{
     if (axis == 0u) {
         return vec3<f32>(sign_float(dir.x), 0.0, 0.0);
@@ -294,22 +186,9 @@ fn debug_vec3_id_to_u32(p: vec3<f32>, id: u32) -> u32 {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// ============================================================
+// RAY HELPERS
+// ============================================================
 
 fn should_diffract(dir: vec3<f32>, curr_voxel_id: vec3<i32>, next_voxel_id: u32) -> bool {
     return false;
@@ -357,6 +236,10 @@ fn rand_f32(seed: u32) -> f32 {
     return f32(hash_u32(seed)) / 4294967296.0;
 }
 
+
+// ============================================================
+// MAIN RAY TRACING
+// ============================================================
 
 
 fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
@@ -529,7 +412,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
 
                 for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
                     let refl = R * mat.reflection[i];
-                    let kd   = mat.diffuse_ratio[i];
+                    let kd   = mat.diffusion[i];
                     let ks   = 1.0 - kd;
 
                     let s = spec_energy[i] * refl * ks;
@@ -656,24 +539,9 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// ============================================================
+// MAIN
+// ============================================================
 
 
 fn generate_direction_on_sphere(id : u32, max_rays : u32) -> vec3<f32>{

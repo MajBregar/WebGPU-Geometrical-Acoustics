@@ -57,6 +57,7 @@ export class Renderer {
 
         loader.createDepthTexture(width, height);
         this.depthView = loader.depthTexture.createView();
+        
 
         this.depthWidth = width;
         this.depthHeight = height;

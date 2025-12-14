@@ -12,21 +12,21 @@ export class Loader {
         //constants
         this.vertexSize4Bytes = 7;
 
-        //shader code paths
+        //paths
         this.rayTracingComputeShaderURL = "./core/shaders/ray_compute.wgsl";
         this.shadowVertexShaderURL = "./core/shaders/shadow_vsh.wgsl";
         this.vertexShaderURL = "./core/shaders/render_room_vsh.wgsl";
         this.fragmentShaderURL = "./core/shaders/render_room_fsh.wgsl";
-
+        this.materialJsonURL = "../materials.json";
+        
         //geometry
         this.room_dimensions = settings.SIMULATION.room_dimensions;
         this.room_voxel_data = null;
         this.faceCount = 0;
         this.indexCount = 0;
         this.vertexCount = 0;
-        this.sphereIndexCount = 0;
-
-
+        this.sphereIndexCount = 0; 
+        this.materialCount = 0;
 
         //CPU buffers
         this.faceColors_CPU_Write = null;
@@ -40,6 +40,8 @@ export class Loader {
         this.sphereInstanceBuffer_CPU_Write = null;
         this.listenerBands_CPU = null;
         this.listenerClear_CPU = null;
+        this.materials_CPU = null;
+
 
         //GPU buffers
         this.faceColors_GPU_Buffer = null;
@@ -56,6 +58,8 @@ export class Loader {
         this.listener_GPU_Buffer = null;
         this.listener_GPU_ReadBack = null;
         this.listenerClear_GPU_Buffer = null;
+        this.materials_GPU_Buffer = null;
+
 
 
         //pipeline bind groups
@@ -108,8 +112,10 @@ export class Loader {
         const shadow_vsh = await this.loadShader(this.shadowVertexShaderURL);
         const main_vsh = await this.loadShader(this.vertexShaderURL);
         const main_fsh = await this.loadShader(this.fragmentShaderURL);
+        const materialsResp = await fetch(this.materialJsonURL);
+        const materials = await materialsResp.json();
+
         
-        this.mesh_builder = new VoxelMeshBuilder(this.room_dimensions);
 
         this.createUniformBuffer();
         this.createShadowUniformBuffer();
@@ -118,10 +124,13 @@ export class Loader {
         this.createEnergyBandBuffer();
         this.createShadowMap();
 
-        this.room_voxel_data = generateRoom(this.room_dimensions);                
+        this.materials = materials;
+        this.mesh_builder = new VoxelMeshBuilder(this.room_dimensions, this.materials);
+        this.room_voxel_data = generateRoom(this.room_dimensions, this.materials);                
         this.createVoxelIDBuffer();
-        this.createWritebackBuffers();
-        this.createMeshAndBuffers();
+        this.createFaceStatsBuffers();
+        this.createMeshBuffers();
+        this.createMaterialsBuffer();
 
         this.createFaceColorBuffer();
         this.createSphereBuffers();
@@ -277,7 +286,7 @@ export class Loader {
     }
 
 
-    createWritebackBuffers() {
+    createFaceStatsBuffers() {
         const builder = this.mesh_builder;
         const geometry_data = builder.buildFaceArrayFromVoxels(this.room_voxel_data);
         const voxel_to_face = geometry_data.v2f;
@@ -383,7 +392,7 @@ export class Loader {
     }
 
 
-    createMeshAndBuffers() {
+    createMeshBuffers() {
         const device = this.device;
         const builder = this.mesh_builder;
 
@@ -422,6 +431,44 @@ export class Loader {
 
 
         this.indexCount = mesh.indexCount;
+    }
+
+
+    createMaterialsBuffer() {
+        const device = this.device;
+        const band_count = this.energyBandCount;
+        const materials = this.materials;
+
+        const FLOATS_PER_MATERIAL = band_count * 6 + 1;
+        const materialCount = materials.length;
+        const materialData = new Float32Array(materialCount * FLOATS_PER_MATERIAL);
+
+        let offset = 0;
+
+        for (let m = 0; m < materialCount; m++) {
+            const mat = materials[m];
+
+            materialData.set(mat.absorption,        offset); offset += band_count;
+            materialData.set(mat.reflection,        offset); offset += band_count;
+            materialData.set(mat.transmission,      offset); offset += band_count;
+            materialData.set(mat.attenuation,       offset); offset += band_count;
+            materialData.set(mat.diffuse_ratio,     offset); offset += band_count;
+            materialData.set(mat.diffraction_ratio, offset); offset += band_count;
+
+            materialData[offset++] = mat.refractive_index;
+        }
+
+        // Keep CPU copy if needed later
+        this.materials_CPU = materialData;
+
+        this.materials_GPU_Buffer = device.createBuffer({
+            size: materialData.byteLength,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+        });
+
+        device.queue.writeBuffer(this.materials_GPU_Buffer, 0, materialData);
+
+        this.materialCount = materialCount;
     }
 
 
@@ -814,48 +861,57 @@ export class Loader {
 
         const rayBindGroupLayout = device.createBindGroupLayout({
             entries: [
-                // 0: Uniforms (ray config, room dims, etc.)
+                // 0: Uniforms
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "uniform" }
                 },
 
-                // 1: Voxel ids
+                // 1: Voxel material IDs
                 {
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "read-only-storage" }
                 },
 
-                // 2: Voxel->SolidID mapping table
+                // 2: Voxel -> face mapping
                 {
                     binding: 2,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "read-only-storage" }
                 },
 
-                // 3: Stats buffer (write-only / read-write on GPU)
+                // 3: Face stats
                 {
                     binding: 3,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "storage" }
                 },
 
-                // 4: input energy bands
+                // 4: Input energy bands
                 {
                     binding: 4,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "read-only-storage" }
                 },
-                // 5: output energy bands
+
+                // 5: Output energy bands
                 {
                     binding: 5,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: "storage" }
+                },
+
+                // 6: Materials buffer
+                {
+                    binding: 6,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: "read-only-storage" }
                 }
             ]
         });
+
 
         const pipelineLayout = device.createPipelineLayout({
             bindGroupLayouts: [rayBindGroupLayout]
@@ -878,19 +934,19 @@ export class Loader {
                     resource: { buffer: this.rayComputeUniformBuffer }
                 },
 
-                // 1 - voxel absorption coefficients
+                // 1 - voxel material IDs
                 {
                     binding: 1,
                     resource: { buffer: this.voxelIDs_GPU_Buffer }
                 },
 
-                // 2 - voxel -> solid ID table
+                // 2 - voxel -> face mapping
                 {
                     binding: 2,
                     resource: { buffer: this.voxelToFaceID_GPU_Buffer }
                 },
 
-                // 3 - face stats (accumulation output)
+                // 3 - face stats
                 {
                     binding: 3,
                     resource: { buffer: this.faceStats_GPU_Buffer }
@@ -901,13 +957,21 @@ export class Loader {
                     binding: 4,
                     resource: { buffer: this.energyBandBuffer }
                 },
+
                 // 5 - output energy bands
                 { 
                     binding: 5, 
                     resource: { buffer: this.listener_GPU_Buffer } 
+                },
+
+                // 6 - materials buffer
+                {
+                    binding: 6,
+                    resource: { buffer: this.materials_GPU_Buffer }
                 }
             ]
         });
+
     }
 }
 
