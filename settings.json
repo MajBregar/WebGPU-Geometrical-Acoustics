@@ -19,11 +19,12 @@
         "voxel_scale_meters" : 0.1,
         "ray_energy_min" : 0.0000000001,
         "emitter_position" : [8.5, 8.5, 8.5],
-        "listener_position" : [20, 6, 26],
+        "listener_position" : [20, 6, 15],
         "listener_radius" : 1.5,
         "heatmap_sensitivity" : 3.2,
-        "unit_precision_adjustment" : 100000000
+        "unit_precision_adjustment" : 100000000,
 
+        "input_file" : "input.wav"
 
     },
 

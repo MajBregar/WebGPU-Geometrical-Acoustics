@@ -2,9 +2,10 @@ import { WebglPlot, WebglLine, ColorRGBA } from "https://cdn.jsdelivr.net/gh/dan
 
 export class UI {
 
-    constructor(settings, renderer) {
+    constructor(settings, renderer, audio_engine) {
         this.settings = settings;
         this.renderer = renderer;
+        this.audio_engine = audio_engine;
 
         this.roomW = settings.SIMULATION.room_dimensions[0];
         this.roomH = settings.SIMULATION.room_dimensions[1];
@@ -14,6 +15,7 @@ export class UI {
         this.initWallCheckboxes();
         this.initReloadButton();
         this.initHeatmapCheckboxes();
+        this.initAudioFileControls();
 
         this.inputGraph  = this.createGraph("energyPlot1");
         this.outputGraph = this.createGraph("energyPlot2");
@@ -103,6 +105,23 @@ export class UI {
         };
     }
 
+    normalize_curve(curve) {
+        let max = 0;
+
+        const n = curve.length;
+        for (let i = 0; i < n; i++) {
+            const v = curve[i];
+            if (v > max) max = v;
+        }
+        
+        if (max <= 0) return curve;
+
+        for (let i = 0; i < n; i++) {
+            curve[i] /= max;
+        }
+
+        return curve;
+    }
 
 
     updateGraph(graph, values) {
@@ -121,6 +140,72 @@ export class UI {
 
         wglp.update();
     }
+
+    initAudioFileControls() {
+        const engine = this.audio_engine;
+
+        const fileInput = document.getElementById("audio-file-input");
+        const fileLabel = document.getElementById("selected-audio-file");
+        const button    = document.getElementById("play-toggle-button");
+
+        let currentFile = null;
+        let state = "idle"; 
+
+        function setButton(text, enabled = true) {
+            button.textContent = text;
+            button.disabled = !enabled;
+        }
+
+        fileInput.addEventListener("change", () => {
+            if (!fileInput.files || fileInput.files.length === 0) {
+                currentFile = null;
+                fileLabel.textContent = "No file selected";
+                setButton("Load", false);
+                state = "idle";
+                return;
+            }
+
+            currentFile = fileInput.files[0];
+            fileLabel.textContent = currentFile.name;
+            setButton("Load", true);
+            state = "idle";
+        });
+
+        button.addEventListener("click", async () => {
+            if (!currentFile) return;
+
+            // LOAD
+            if (state === "idle") {
+                const url = URL.createObjectURL(currentFile);
+
+                await engine.create();
+                await engine.loadSound(url, { loop: false });
+
+                setButton("Play");
+                state = "loaded";
+                return;
+            }
+
+            // PLAY
+            if (state === "loaded" || state === "paused") {
+                engine.resume();
+                engine.play();
+
+                setButton("Pause");
+                state = "playing";
+                return;
+            }
+
+            // PAUSE
+            if (state === "playing") {
+                engine.pause();
+
+                setButton("Play");
+                state = "paused";
+            }
+        });
+    }
+
 
 
 

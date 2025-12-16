@@ -13,12 +13,11 @@ function type_uvec3(v)  { return { kind:"uvec3",  value:v }; }
 
 export class Renderer {
 
-    constructor(canvas, device, loader, controller, sound_processor, settings) {
+    constructor(canvas, device, loader, controller, settings) {
         this.canvas = canvas;
         this.device = device;
         this.loader = loader;
         this.controller = controller;
-        this.sound_processor = sound_processor;
         this.settings = settings;
 
         this.context = null;
@@ -256,9 +255,6 @@ export class Renderer {
         this.reload = true;
     }
 
-    getListenerEnergy(){
-        return this.listenerEnergy;
-    }
 
     handleReload(){
         this.loader.reload();
@@ -375,10 +371,8 @@ export class Renderer {
         device.queue.submit([encoder.finish()]);
 
 
-        const faces = await loader.readFaceStats();
-        const listenerBands = await loader.readListenerBands();
-        
-        this.listenerEnergy = this.sound_processor.process_listener_sound(listenerBands);
+        const faces = await loader.readFaceStats();        
+        this.listenerEnergy = await loader.readListenerBands();
         
         this.updateColors(faces);
         this.updateSpherePositions();

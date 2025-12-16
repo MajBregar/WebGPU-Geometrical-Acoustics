@@ -20,7 +20,7 @@
         </div>
 
         <div id="outputGraphContainer">
-            <h3 style="text-align:center; margin: 5px;">Listener Energy</h3>
+            <h3 style="text-align:center; margin: 5px;">Room Transfer Function</h3>
             <canvas id="energyPlot2" width="400" height="200"></canvas>
         </div>
     </div>
@@ -118,6 +118,29 @@
         </div>
     </div>
 
+
+    <div id="file-selection-controls">
+        <h3>Input File Selection</h3>
+
+        <!-- File selector -->
+        <input
+            type="file"
+            id="audio-file-input"
+            accept="audio/*"
+            />
+
+        <!-- Selected file display -->
+        <div id="selected-audio-file">
+            No file selected
+        </div>
+
+        <!-- Controls (to be wired later) -->
+        <div class="audio-file-controls">
+            <button id="play-toggle-button" disabled>
+                Load
+            </button>
+        </div>
+    </div>
 
 
 

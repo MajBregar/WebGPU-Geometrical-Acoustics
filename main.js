@@ -2,7 +2,7 @@ import { Renderer } from "./core/scripts/renderer.js";
 import { Loader } from "./core/scripts/loader.js";
 import { Controller } from "./core/scripts/controller.js";
 import { UI } from "./core/scripts/ui.js";
-import { SoundProcessor } from "./core/scripts/sound_processing.js"
+import { AudioEngine } from "./core/scripts/audio_engine.js"
 
 const canvas = document.getElementById("gfx");
 canvas.width = canvas.clientWidth;
@@ -22,11 +22,12 @@ const settings = await settingsResponse.json();
 
 const loader = new Loader(device, settings);
 await loader.init();
-const sound_processor = new SoundProcessor(device, loader, settings);
 const controller = new Controller(canvas, settings);
-const renderer = new Renderer(canvas, device, loader, controller, sound_processor, settings);
+const renderer = new Renderer(canvas, device, loader, controller, settings);
 
-const ui = new UI(settings, renderer);
+const audio_engine = new AudioEngine(device, loader, settings);
+
+const ui = new UI(settings, renderer, audio_engine);
 const inputGraph = ui.inputGraph;
 const outputGraph = ui.outputGraph;
 
@@ -49,20 +50,28 @@ async function updateGPUFPS() {
 }
 
 
-let running = true;
 async function simulationLoop() {
-    if (running) {
-        const start = performance.now();
+    
+    const start = performance.now();
 
-        sound_processor.update_loader_energy_vector();
+    audio_engine.update_loader_energy_vector();
 
-        await renderer.renderFrame();
-        updateGPUFPS(start);
+    await renderer.renderFrame();
+    
+    const emitter_energy = loader.energyBands_CPU;        
+    const listener_energy = renderer.listenerEnergy;
+    const transfer_function = audio_engine.get_transfer_function(listener_energy);
+    
+    audio_engine.updateRoom({bands : transfer_function, reflections : []});
 
-        ui.updateGraph(inputGraph, loader.energyBands_CPU);
-        ui.updateGraph(outputGraph, renderer.getListenerEnergy());
+    ui.updateGraph(inputGraph, emitter_energy);
 
-    }
+
+
+    ui.updateGraph(outputGraph, ui.normalize_curve(transfer_function));
+    updateGPUFPS(start);
+
+    
 
     requestAnimationFrame(simulationLoop);
 }
