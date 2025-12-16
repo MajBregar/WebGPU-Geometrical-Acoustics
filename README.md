@@ -24,3 +24,7 @@ A simple WebGPU-based simulation of geometrical acoustics.
 - Accumulate energy per direction at listener (cubemap or equivalent)
 - Energy cutoff threshold (stop low-energy rays)
 - Max bounce count (prevent infinite recursion)
+
+
+# CREDITS 
+- glm.js

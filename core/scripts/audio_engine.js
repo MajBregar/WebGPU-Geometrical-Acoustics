@@ -48,26 +48,18 @@ export class AudioEngine {
 
         this.audioContext = new AudioContext();
 
-        const processorURL = new URL(
-            "./sim_audio_processor.js",
-            import.meta.url
+        await this.audioContext.audioWorklet.addModule(
+            "./core/scripts/sim_audio_processor.js"
         );
-
-        await this.audioContext.audioWorklet.addModule(processorURL);
-
 
         this.roomNode = new AudioWorkletNode(
             this.audioContext,
-            "sim_audio_processor",
-            {
-                processorOptions: {
-                    bandCount: this.bandCount
-                }
-            }
+            "sim_audio_processor"
         );
 
         this.roomNode.connect(this.audioContext.destination);
     }
+
 
     async loadSound(url, { loop = false } = {}) {
         if (!this.audioContext) {
