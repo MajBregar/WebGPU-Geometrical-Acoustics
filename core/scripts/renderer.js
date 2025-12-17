@@ -30,6 +30,7 @@ export class Renderer {
         this.depthHeight = 0;
 
         this.listenerEnergy = [];
+        this.precision_adjustment = 0;
 
         this.init();
     }
@@ -136,6 +137,7 @@ export class Renderer {
         loader.packBuffer(loader.shadowUniformBuffer, loader.shadowUniformBufferSize, shadow_uniforms);
 
         const sim = settings.SIMULATION;
+        
         const ray_uniforms = {
             room_dims : type_uvec3(sim.room_dimensions),
             max_steps : type_u32(sim.max_ray_steps),
@@ -151,7 +153,7 @@ export class Renderer {
             listener_pos: type_vec3(sim.listener_position),
             listener_radius : type_float(sim.listener_radius),
 
-            precision_adj: type_float(sim.unit_precision_adjustment)
+            precision_adj: type_float(this.precision_adjustment)
         }
 
         loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
@@ -165,6 +167,22 @@ export class Renderer {
             ((a & 0xFF) <<  0);
     }
 
+    updateSimPrecisionAdjustment() {
+        const energy = this.loader.energyBands_CPU;
+        const bandCount = this.loader.energyBandCount;
+        
+        const U32_MAX = 0xFFFFFFFF;
+        const BOOST_LOSSY = 10.0; //THEORETICALLY CAN CAUSE OVERFLOW IN CASES WHERE LISTENER OBSORBS MORE THAN 10% OF TOTAL ENERGY
+
+        let energy_sum = 0.0;
+        for (let i = 0; i < bandCount; i++) {
+            energy_sum += energy[i];
+        }
+        
+        this.precision_adjustment = Math.floor(BOOST_LOSSY * (U32_MAX / energy_sum));
+    }
+
+
     updateColors(face_data) {
         const loader = this.loader;
         const settings = this.settings;
@@ -177,7 +195,7 @@ export class Renderer {
 
         const faceCount = loader.faceCount;
         const vis_coef = sim.heatmap_sensitivity;
-        const unit_precision_adjustment = sim.unit_precision_adjustment;
+        const unit_precision_adjustment = this.precision_adjustment;
         
         var starting_energy = 0.0;
         for (let i = 0; i < loader.energyBands_CPU.length; i++){
@@ -185,11 +203,18 @@ export class Renderer {
         }
         starting_energy = starting_energy * unit_precision_adjustment;
         
+
         for (let faceID = 0; faceID < faceCount; faceID++) {
-            const face = face_data[faceID];
             const hide_alpha = hidden_walls[faceID] ? 0 : 255;
             const face_color = [wall_rgb[0], wall_rgb[1], wall_rgb[2], hide_alpha];
 
+            if (starting_energy == 0 || !Number.isFinite(starting_energy)) {
+                loader.faceColors_CPU_Write[faceID] = this.rgba_to_u32(face_color);
+                continue;
+            }
+
+            const face = face_data[faceID];
+    
             if (enable_heatmap && enable_bounce_heatmap == false) {
                 const enery_absorbed = face.absorbedEnergy;
                 const energy_color = (enery_absorbed / starting_energy) * Math.pow(10, vis_coef) * (255 - wall_rgb[0]);
@@ -321,6 +346,7 @@ export class Renderer {
         const device = this.device;
         const settings = this.settings;
 
+        this.updateSimPrecisionAdjustment();
         this.updateUniforms();
         this.updateInputEnergyBuffer();
 
@@ -372,7 +398,7 @@ export class Renderer {
 
 
         const faces = await loader.readFaceStats();        
-        this.listenerEnergy = await loader.readListenerBands();
+        this.listenerEnergy = await loader.readListenerBands(this.precision_adjustment);
         
         this.updateColors(faces);
         this.updateSpherePositions();

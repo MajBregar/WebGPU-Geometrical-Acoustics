@@ -173,10 +173,9 @@ export class Loader {
         return arr;
     }
 
-    async readListenerBands() {
+    async readListenerBands(prec_adj) {
         const buf = this.listener_GPU_ReadBack;
         const count = this.energyBandCount;
-        const adj = this.settings.SIMULATION.unit_precision_adjustment;
 
         await buf.mapAsync(GPUMapMode.READ);
         const mapped = buf.getMappedRange();
@@ -185,7 +184,7 @@ export class Loader {
         const out = this.listenerBands_CPU;
 
         for (let i = 0; i < count; i++) {
-            out[i] = u32[i] / adj;            
+            out[i] = u32[i] / prec_adj;            
         }
 
         buf.unmap();

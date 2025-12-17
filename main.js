@@ -75,15 +75,15 @@ async function simulationLoop() {
 
     const emitter_energy = loader.energyBands_CPU;
     const listener_energy = renderer.listenerEnergy;
-
+    
     const transfer_function = audio_engine.get_transfer_function(listener_energy);
-
+    
     audio_engine.updateRoom({
         bands: transfer_function,
-        reflections
+        reflections : []
     });
 
-    ui.updateGraph(inputGraph, emitter_energy);
+    ui.updateGraph(inputGraph, ui.normalize_curve(emitter_energy));
     ui.updateGraph(outputGraph, ui.normalize_curve(transfer_function));
 
     updateGPUFPS(start);
