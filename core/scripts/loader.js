@@ -27,6 +27,7 @@ export class Loader {
         this.vertexCount = 0;
         this.sphereIndexCount = 0; 
         this.materialCount = 0;
+        this.irBinCount = 44000;
 
         //CPU buffers
         this.faceColors_CPU_Write = null;
@@ -175,7 +176,8 @@ export class Loader {
 
     async readListenerBands(prec_adj) {
         const buf = this.listener_GPU_ReadBack;
-        const count = this.energyBandCount;
+        const bandCount = this.energyBandCount;
+        const binCount  = this.irBinCount;
 
         await buf.mapAsync(GPUMapMode.READ);
         const mapped = buf.getMappedRange();
@@ -183,10 +185,15 @@ export class Loader {
 
         const out = this.listenerBands_CPU;
 
-        for (let i = 0; i < count; i++) {
-            out[i] = u32[i] / prec_adj;            
-        }
+        for (let t = 0; t < binCount; t++) {
+            const base = t * bandCount;
+            for (let b = 0; b < bandCount; b++) {
+                const idx = base + b;
+                out[idx] = u32[idx] / prec_adj;
 
+            }
+        }
+        
         buf.unmap();
         return out;
     }
@@ -338,33 +345,53 @@ export class Loader {
 
     createListenerBuffers() {
         const device = this.device;
-        const count = this.energyBandCount;
-        const byteSize = count * 4;
 
+        const bandCount = this.energyBandCount;
+        const binCount  = Math.ceil(1.0 / (1 / 44000));
+        
+        const cellCount = bandCount * binCount;
+        const byteSize  = cellCount * 4;
+
+        // ============================================================
+        // GPU STORAGE: impulse response histogram
+        // ============================================================
         this.listener_GPU_Buffer = device.createBuffer({
             size: byteSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+            usage: GPUBufferUsage.STORAGE |
+                GPUBufferUsage.COPY_SRC |
+                GPUBufferUsage.COPY_DST
         });
 
-
+        // ============================================================
+        // GPU READBACK BUFFER
+        // ============================================================
         this.listener_GPU_ReadBack = device.createBuffer({
             size: byteSize,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
         });
 
-        this.listenerBands_CPU = new Float32Array(count);
+        // ============================================================
+        // CPU VIEW (decoded IR)
+        // ============================================================
+        this.listenerBands_CPU = new Float32Array(cellCount);
 
-
-        this.listenerClear_CPU = new Uint32Array(count);
+        // ============================================================
+        // CLEAR BUFFER (all zeros)
+        // ============================================================
+        this.listenerClear_CPU = new Uint32Array(cellCount);
 
         this.listenerClear_GPU_Buffer = device.createBuffer({
             size: byteSize,
             usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         });
 
-        device.queue.writeBuffer(this.listenerClear_GPU_Buffer, 0, this.listenerClear_CPU);
-
+        device.queue.writeBuffer(
+            this.listenerClear_GPU_Buffer,
+            0,
+            this.listenerClear_CPU
+        );
     }
+
 
 
 
@@ -438,7 +465,8 @@ export class Loader {
         const band_count = this.energyBandCount;
         const materials = this.materials;
 
-        const FLOATS_PER_MATERIAL = band_count * 6 + 1;
+        const FLOATS_PER_MATERIAL = band_count * 7 + 1;
+
         const materialCount = materials.length;
         const materialData = new Float32Array(materialCount * FLOATS_PER_MATERIAL);
 
@@ -447,17 +475,31 @@ export class Loader {
         for (let m = 0; m < materialCount; m++) {
             const mat = materials[m];
 
-            materialData.set(mat.absorption,        offset); offset += band_count;
-            materialData.set(mat.reflection,        offset); offset += band_count;
-            materialData.set(mat.transmission,      offset); offset += band_count;
-            materialData.set(mat.attenuation,       offset); offset += band_count;
-            materialData.set(mat.diffuse_ratio,     offset); offset += band_count;
-            materialData.set(mat.diffraction_ratio, offset); offset += band_count;
+            for (let b = 0; b < band_count; b++) {
+                const sum =
+                    mat.absorption[b] +
+                    mat.reflection[b] +
+                    mat.transmission[b] +
+                    mat.refraction[b];
 
+                if (sum > 1.001) {
+                    throw new Error(
+                        `Material ${mat.name}, band ${b} violates energy conservation`
+                    );
+                }
+            }
+
+
+            materialData.set(mat.absorption,   offset); offset += band_count;
+            materialData.set(mat.reflection,   offset); offset += band_count;
+            materialData.set(mat.transmission, offset); offset += band_count;
+            materialData.set(mat.refraction,   offset); offset += band_count;
+            materialData.set(mat.attenuation,  offset); offset += band_count;
+            materialData.set(mat.diffusion,    offset); offset += band_count;
+            materialData.set(mat.diffraction,  offset); offset += band_count;
             materialData[offset++] = mat.refractive_index;
         }
 
-        // Keep CPU copy if needed later
         this.materials_CPU = materialData;
 
         this.materials_GPU_Buffer = device.createBuffer({
@@ -856,7 +898,16 @@ export class Loader {
 
     createRayComputePipeline(computeShaderCode) {
         const device = this.device;
-        const cModule = device.createShaderModule({code: computeShaderCode});
+        const sim = this.settings.SIMULATION;
+
+        const shaderCode = computeShaderCode
+            .replace(/__MAX_BANDS__/g,        `${sim.energy_bands}u`)
+            .replace(/__MAX_RAY_DEPTH__/g,   `${sim.max_recursion_level}u`)
+            .replace(/__MAX_STACK_SIZE__/g,  `${sim.max_recursion_entries}u`);
+
+        const cModule = device.createShaderModule({
+            code: shaderCode
+        });
 
         const rayBindGroupLayout = device.createBindGroupLayout({
             entries: [
@@ -920,7 +971,7 @@ export class Loader {
             layout: pipelineLayout,
             compute: {
                 module: cModule,
-                entryPoint: "cs_main"
+                entryPoint: "cs_main",
             }
         });
 

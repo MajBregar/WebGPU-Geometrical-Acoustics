@@ -50,45 +50,73 @@ async function updateGPUFPS() {
 }
 
 
-
-const reflections = [
-    {
-        delay: 0.050,
-        gain: 0.35
-    },
-    {
-        delay: 0.070,
-        gain: 0.22
-    },
-    {
-        delay: 0.062,
-        gain: 0.15
-    }
-];
-
 async function simulationLoop() {
 
     const start = performance.now();
 
     audio_engine.update_loader_energy_vector();
-    await renderer.renderFrame();
 
+    await renderer.renderFrame();
     const emitter_energy = loader.energyBands_CPU;
-    const listener_energy = renderer.listenerEnergy;
-    
-    const transfer_function = audio_engine.get_transfer_function(listener_energy);
-    
-    audio_engine.updateRoom({
-        bands: transfer_function,
-        reflections : []
-    });
+
+    if (audio_engine.audioContext && audio_engine.isPlaying) {
+
+        const frameIR     = renderer.listenerEnergy;
+        const irBinCount  = 44000;
+        const sampleRate  = audio_engine.audioContext.sampleRate;
+
+        const accumulatedIR = audio_engine.accumulateIR(
+                frameIR,
+                irBinCount,
+                audio_engine.bandCount
+            );
+
+        const transfer_function = audio_engine.computeDirectTransferFromIR(
+                frameIR,
+                irBinCount,
+                audio_engine.bandCount,
+                sampleRate,
+                emitter_energy
+            );
+
+        const now = performance.now() * 0.001;
+
+        let reflections = audio_engine._cachedReflections;
+
+        if (now - audio_engine._lastReflectionUpdate > audio_engine._reflectionUpdateInterval) {
+            const broadbandIR = audio_engine.collapseIR(
+                accumulatedIR,
+                irBinCount,
+                audio_engine.bandCount
+            );
+
+            reflections = audio_engine.extractReflections(
+                broadbandIR,
+                sampleRate
+            );
+
+            audio_engine.normalizeReflections(reflections);
+            audio_engine.smoothReflections(reflections);
+
+            audio_engine._cachedReflections = reflections;
+            audio_engine._lastReflectionUpdate = now;
+        }
+
+        audio_engine.updateRoom({
+            bands: transfer_function,
+            reflections: reflections
+        });
+
+        ui.updateGraph(outputGraph, ui.normalize_curve(transfer_function));
+    }
 
     ui.updateGraph(inputGraph, ui.normalize_curve(emitter_energy));
-    ui.updateGraph(outputGraph, ui.normalize_curve(transfer_function));
 
     updateGPUFPS(start);
     requestAnimationFrame(simulationLoop);
 }
+
+
 
 
 simulationLoop();

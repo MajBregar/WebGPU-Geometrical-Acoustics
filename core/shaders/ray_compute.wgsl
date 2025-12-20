@@ -1,3 +1,9 @@
+
+const MAX_BANDS        : u32 = __MAX_BANDS__;
+const MAX_RAY_DEPTH   : u32 = __MAX_RAY_DEPTH__;
+const MAX_STACK_SIZE  : u32 = __MAX_STACK_SIZE__;
+
+
 struct RayUniforms {
     roomSize    : vec3<u32>,
     maxSteps  : u32,
@@ -13,7 +19,10 @@ struct RayUniforms {
     listenerPos : vec3<f32>,
     listenerRadius : f32,
 
-    precisionAdj : f32
+    precisionAdj : f32,
+    speedOfSound: f32,
+    maxReflectionTime: f32,
+    irBinCount: u32
 };
 
 struct FaceStats {
@@ -22,13 +31,14 @@ struct FaceStats {
 };
 
 struct Material {
-    absorption        : array<f32, MAX_BANDS>, // surface absorption
-    reflection        : array<f32, MAX_BANDS>, // surface reflection
-    transmission      : array<f32, MAX_BANDS>, // surface transmission
-    attenuation       : array<f32, MAX_BANDS>, // volume attenuation
-    diffusion         : array<f32, MAX_BANDS>, // percentage of reflection that is diffuse
-    diffraction       : array<f32, MAX_BANDS>, // low-freq diffraction participation
-    refractive_index  : f32                    // coefficient for snells law
+    absorption        : array<f32, MAX_BANDS>, // absorbed fraction (lost as heat)
+    reflection        : array<f32, MAX_BANDS>, // reflected fraction (before diffuse/spec split)
+    transmission      : array<f32, MAX_BANDS>, // straight-through transmission (same direction)
+    refraction        : array<f32, MAX_BANDS>, // refractive transmission (Snell direction)
+    attenuation       : array<f32, MAX_BANDS>, // volumetric attenuation per meter
+    diffusion         : array<f32, MAX_BANDS>, // fraction of reflection that is diffuse
+    diffraction       : array<f32, MAX_BANDS>, // low-frequency diffraction participation
+    refractive_index  : f32                    // Snell’s law index (n)
 };
 
 struct RayStackEntry {
@@ -36,12 +46,9 @@ struct RayStackEntry {
     dir   : vec3<f32>,
     energy: array<f32, MAX_BANDS>,
     depth : u32,
-    material : u32
+    material : u32,
+    flight_len : f32
 };
-
-const MAX_BANDS: u32 = 10;
-const MAX_RAY_DEPTH  : u32 = 3u;
-const MAX_STACK_SIZE : u32 = 12u;
 
 const MATERIAL_AIR_ID : u32 = 0u;
 
@@ -235,13 +242,14 @@ fn rand_f32(seed: u32) -> f32 {
 // MAIN RAY TRACING
 // ============================================================
 
-
 fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
     let roomDims = vec3<i32>(
         i32(uni.roomSize.x),
         i32(uni.roomSize.y),
         i32(uni.roomSize.z)
     );
+
+    let irBinSize = uni.maxReflectionTime / f32(uni.irBinCount);
 
     var rayStack : array<RayStackEntry, MAX_STACK_SIZE>;
     var stackTop : i32 = -1;
@@ -259,8 +267,11 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
         dirInput,
         start_energy,
         0u,
-        MATERIAL_AIR_ID
+        MATERIAL_AIR_ID,
+        0.0
     );
+
+    var insert = 0u;
 
     // ===== RAY STACK LOOP =====
     loop {
@@ -274,6 +285,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
         var ray_energy = ray.energy;
         var curr_material = ray.material;
         var step = 0u;
+        var ray_flight_len = ray.flight_len;
 
         // ===== DDA LOOP =====
         loop {
@@ -288,17 +300,27 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                 break;
             }
 
-            // ---- LISTENER HIT ----
             let dist_to_listener = distance(pos, uni.listenerPos);
+
             if (dist_to_listener <= uni.listenerRadius) {
+                let time_s = ray_flight_len / uni.speedOfSound;
+
+                let time_bin_f = time_s / irBinSize;
+                let time_bin   = min(u32(time_bin_f), uni.irBinCount - 1u);
+
+                let base = time_bin * MAX_BANDS;
+
                 for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
                     atomicAdd(
-                        &listenerEnergyBands[i],
+                        &listenerEnergyBands[base + i],
                         u32(ray_energy[i] * uni.precisionAdj)
                     );
                 }
+
                 break;
             }
+
+
 
             // ---- VOXEL DDA ----
             let voxel = world_to_voxel(pos);
@@ -316,6 +338,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
             let next_material = materialID[nextID];
 
             let distance_m = t * uni.voxelScale;
+            let new_flight_len = ray_flight_len + distance_m;
 
             var N = get_face_normal(axis, dir);
             if (dot(N, dir) > 0.0) { N = -N; }
@@ -323,7 +346,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
 
 
             // ============================================================
-            // NO MATERIAL CHANGE CALCULATIONS (OPTIMIZED)
+            // NO MATERIAL CHANGE CALCULATIONS
             // ============================================================
 
             if (next_material == curr_material) {
@@ -357,13 +380,15 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                             diffDir,
                             diffract_energy,
                             ray.depth + 1u,
-                            curr_material
+                            curr_material,
+                            new_flight_len
                         );
                     }
                 }
 
                 pos = hitPos + dir * 1e-4;
                 step++;
+                ray_flight_len = new_flight_len;
                 continue;
             }
 
@@ -433,40 +458,59 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
 
                 var spec_energy = boundary_energy;
                 var diff_energy = boundary_energy;
+                var trans_energy = boundary_energy;
+                var refr_energy = boundary_energy;
 
                 var spec_sum = 0.0;
                 var diff_sum = 0.0;
-
-                for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
-                    let refl = R * materials[boundary_material_id].reflection[i];
-                    let kd   = materials[boundary_material_id].diffusion[i];
-                    let ks   = 1.0 - kd;
-
-                    let s = spec_energy[i] * refl * ks;
-                    let d = diff_energy[i] * refl * kd;
-
-                    spec_energy[i] = s;
-                    diff_energy[i] = d;
-
-                    spec_sum += s;
-                    diff_sum += d;
-                }
-
-                // ============================================================
-                // REFRACTION (ENERGY COMPUTE FIRST)
-                // ============================================================
-
-                var refr_energy = boundary_energy;
+                var trans_sum = 0.0;
                 var refr_sum = 0.0;
-                var has_refr = false;
 
-                if (sin2_t <= 1.0) {
-                    for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
-                        let e = refr_energy[i] * T * materials[boundary_material_id].transmission[i];
-                        refr_energy[i] = e;
-                        refr_sum += e;
+                let has_refr = sin2_t <= 1.0;
+
+                // ============================================================
+                // ENERGY SPLIT (PHYSICALLY CONSERVATIVE)
+                // ============================================================
+                for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+
+                    let E = boundary_energy[i];
+
+                    // --- material coefficients ---
+                    var refl = materials[boundary_material_id].reflection[i];
+                    var trans = materials[boundary_material_id].transmission[i];
+                    var refr  = materials[boundary_material_id].refraction[i];
+
+                    // enforce conservation (robust)
+                    let sum_rt = refl + trans + refr;
+                    if (sum_rt > 1.0) {
+                        let inv = 1.0 / sum_rt;
+                        refl *= inv;
+                        trans *= inv;
+                        refr  *= inv;
                     }
-                    has_refr = true;
+
+                    // --- reflection split ---
+                    let kd = materials[boundary_material_id].diffusion[i];
+                    let ks = 1.0 - kd;
+
+                    let E_reflect = E * refl;
+                    let E_spec = E_reflect * ks;
+                    let E_diff = E_reflect * kd;
+
+                    // --- transmission / refraction ---
+                    let E_trans = E * trans;
+                    let E_refr  = select(0.0, E * refr, has_refr);
+
+                    // --- store ---
+                    spec_energy[i] = E_spec;
+                    diff_energy[i] = E_diff;
+                    trans_energy[i] = E_trans;
+                    refr_energy[i] = E_refr;
+
+                    spec_sum += E_spec;
+                    diff_sum += E_diff;
+                    trans_sum += E_trans;
+                    refr_sum += E_refr;
                 }
 
                 // ============================================================
@@ -474,14 +518,15 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                 // ============================================================
 
                 let free_slots = i32(MAX_STACK_SIZE) - stackTop - 1;
+
                 let spec_ok = spec_sum > uni.energyCutoff;
                 let diff_ok = diff_sum > uni.energyCutoff;
+                let trans_ok = trans_sum > uni.energyCutoff;
                 let refr_ok = refr_sum > uni.energyCutoff && has_refr;
 
-                // PUSH RAYS BY ENERGY SUM
                 for (var k = 0; k < free_slots; k++) {
 
-                    var best = 0; // 1=spec, 2=diff, 3=refr
+                    var best = 0; // 1=spec, 2=diff, 3=refr, 4=trans
                     var best_val = 0.0;
 
                     if (spec_ok && spec_sum > best_val) {
@@ -493,9 +538,12 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                     if (refr_ok && refr_sum > best_val) {
                         best = 3; best_val = refr_sum;
                     }
+                    if (trans_ok && trans_sum > best_val) {
+                        best = 4; best_val = trans_sum;
+                    }
 
                     if (best == 0) {
-                        break; // nothing left to push
+                        break;
                     }
 
                     // ---- SPECULAR ----
@@ -506,14 +554,19 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                             reflDir,
                             spec_energy,
                             ray.depth + 1u,
-                            curr_material
+                            curr_material,
+                            new_flight_len,
                         );
                         spec_sum = 0.0;
                     }
 
                     // ---- DIFFUSE ----
                     else if (best == 2) {
-                        let seed = (((ray.depth * 73856093u) ^ ray.material) * 19349663u) ^ u32(hitPos.x * 4096.0) ^ u32(hitPos.y * 4096.0) ^ u32(hitPos.z * 4096.0);
+                        let seed = (((ray.depth * 73856093u) ^ ray.material) * 19349663u)
+                                ^ u32(hitPos.x * 4096.0)
+                                ^ u32(hitPos.y * 4096.0)
+                                ^ u32(hitPos.z * 4096.0);
+
                         let rnd = vec2<f32>(rand_f32(seed), rand_f32(seed ^ 0x9e3779b9u));
                         let diffDir = cosine_hemisphere(N, rnd);
 
@@ -523,13 +576,14 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                             diffDir,
                             diff_energy,
                             ray.depth + 1u,
-                            curr_material
+                            curr_material,
+                            new_flight_len
                         );
                         diff_sum = 0.0;
                     }
 
                     // ---- REFRACTION ----
-                    else {
+                    else if (best == 3) {
                         let cos_t = sqrt(1.0 - sin2_t);
                         let refrDir = normalize(eta * dir + (eta * cos_i - cos_t) * N);
 
@@ -539,12 +593,28 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                             refrDir,
                             refr_energy,
                             ray.depth + 1u,
-                            next_material
+                            next_material,
+                            new_flight_len
                         );
                         refr_sum = 0.0;
                     }
+
+                    // ---- TRANSMISSION ----
+                    else {
+                        stackTop++;
+                        rayStack[stackTop] = RayStackEntry(
+                            hitPos - N * 1e-3,
+                            dir,
+                            trans_energy,
+                            ray.depth + 1u,
+                            next_material,
+                            new_flight_len
+                        );
+                        trans_sum = 0.0;
+                    }
                 }
             }
+
 
             //BREAK OUT OF RAY LOOP AND GET NEW RAY
             break;

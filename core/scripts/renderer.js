@@ -153,9 +153,12 @@ export class Renderer {
             listener_pos: type_vec3(sim.listener_position),
             listener_radius : type_float(sim.listener_radius),
 
-            precision_adj: type_float(this.precision_adjustment)
+            precision_adj: type_float(this.precision_adjustment),
+            speed_of_sound : type_float(sim.speed_of_sound),
+            max_ref_time : type_float(sim.max_reflection_delay_seconds),
+            ir_bin_count : type_u32(loader.irBinCount)
         }
-
+        
         loader.packBuffer(loader.rayComputeUniformBuffer, loader.rayComputeUniformBufferSize, ray_uniforms);
     }
 
@@ -366,7 +369,7 @@ export class Renderer {
             0,
             loader.listener_GPU_Buffer,
             0,
-            loader.energyBandCount * 4
+            loader.listenerClear_CPU.byteLength
         );
 
 
@@ -391,7 +394,7 @@ export class Renderer {
             0,
             loader.listener_GPU_ReadBack,
             0,
-            loader.energyBandCount * 4
+            loader.listener_GPU_ReadBack.byteLength
         );
 
         device.queue.submit([encoder.finish()]);

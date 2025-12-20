@@ -1,13 +1,4 @@
-const BAND_RANGES = [
-    [22, 44], [44, 88], [88, 177], [177, 354], [354, 707],
-    [707, 1414], [1414, 2828], [2828, 5657], [5657, 11314], [11314, 22627],
-];
 
-const MAX_REFLECTIONS = 16;
-const MAX_DELAY_SEC = 1.0;
-
-const GAIN_SMOOTHING = 0.02;
-const REFLECTION_SMOOTHING = 0.02;
 
 class BiquadBandpass {
     constructor(sampleRate, f0, Q) {
@@ -50,22 +41,30 @@ class BiquadBandpass {
 }
 
 class SimAudioProcessor extends AudioWorkletProcessor {
-    constructor() {
+    constructor(options) {
         super();
 
-        this.bandCount = BAND_RANGES.length;
+        const { band_ranges, max_reflections, max_delay_sec, aw_dry_smoothing, aw_wet_smoothing } = options.processorOptions;
+
+        this.band_ranges = band_ranges;
+        this.max_reflections = max_reflections;
+        this.max_delay_sec = max_delay_sec;
+        this.aw_dry_smoothing = aw_dry_smoothing;
+        this.aw_wet_smoothing = aw_wet_smoothing;
+
+        this.bandCount = band_ranges.length;
         this.bandGains = new Float32Array(this.bandCount).fill(1.0);
         this.smoothGains = new Float32Array(this.bandCount).fill(1.0);
 
         this.filters = [];
         for (let b = 0; b < this.bandCount; b++) {
-            const [f0, f1] = BAND_RANGES[b];
+            const [f0, f1] = band_ranges[b];
             const center = Math.sqrt(f0 * f1);
             const Q = center / (f1 - f0);
             this.filters[b] = new BiquadBandpass(sampleRate, center, Q);
         }
 
-        this.maxDelaySamples = Math.floor(MAX_DELAY_SEC * sampleRate);
+        this.maxDelaySamples = Math.floor(this.max_delay_sec * sampleRate);
         this.delayBuffer = new Float32Array(this.maxDelaySamples);
         this.delayIndex = 0;
 
@@ -78,7 +77,7 @@ class SimAudioProcessor extends AudioWorkletProcessor {
             }
 
             if (e.data.reflections) {
-                const incoming = e.data.reflections.slice(0, MAX_REFLECTIONS);
+                const incoming = e.data.reflections.slice(0, this.max_reflections);
                 this.reflections.length = incoming.length;
 
                 for (let i = 0; i < incoming.length; i++) {
@@ -108,12 +107,12 @@ class SimAudioProcessor extends AudioWorkletProcessor {
         const chCount = input.length;
 
         for (let b = 0; b < this.bandCount; b++) {
-            this.smoothGains[b] += GAIN_SMOOTHING * (this.bandGains[b] - this.smoothGains[b]);
+            this.smoothGains[b] += this.aw_dry_smoothing * (this.bandGains[b] - this.smoothGains[b]);
         }
 
         for (const r of this.reflections) {
-            r.delayCurrent += REFLECTION_SMOOTHING * (r.delayTarget - r.delayCurrent);
-            r.gainCurrent += REFLECTION_SMOOTHING * (r.gainTarget - r.gainCurrent);
+            r.delayCurrent += this.aw_wet_smoothing * (r.delayTarget - r.delayCurrent);
+            r.gainCurrent += this.aw_wet_smoothing * (r.gainTarget - r.gainCurrent);
         }
 
         for (let i = 0; i < n; i++) {

@@ -1,17 +1,11 @@
-
 import FFT from "./fft.js";
-
-const BAND_RANGES = [
-    [22, 44], [44, 88], [88, 177], [177, 354], [354, 707],
-    [707, 1414], [1414, 2828], [2828, 5657], [5657, 11314], [11314, 22627],
-];
 
 export class AudioEngine {
     constructor(device, loader, settings) {
         this.loader = loader;
         this.settings = settings;
         this.device = device;
-        
+
         this.bandCount = settings.SIMULATION.energy_bands;
 
         this.audioContext = null;
@@ -24,32 +18,195 @@ export class AudioEngine {
         this.isPlaying = false;
         this.playbackStartTime = 0;
 
-
-
         this.inputEnergyBands_CPU_Write = loader.energyBands_CPU;
         this.transfer_function = new Float32Array(this.bandCount);
 
+        this.band_ranges = settings.SIMULATION.band_ranges;
+
+        this.irAccumulator = null;
+        this.irBroadband = null;
+        this.irBinCount = 0;
+
+        this.irDecay = settings.SIMULATION.ir_accumulation_decay;
+
+        this.reflectionScratch = [];
+        this.maxReflections = settings.SIMULATION.max_reflections;
+        this.directSoundInterval = settings.SIMULATION.direct_sound_interval;
 
         this.energyTimeline = null;
         this.energyHopSize = 1024;
         this.energyFFTSize = 2048;
         this.energySampleRate = 0;
 
+        this._lastReflectionUpdate = 0;
+        this._reflectionUpdateInterval = settings.SIMULATION.reflection_sample_interval;
+        this._cachedReflections = [];
 
+        this._reflectionState = [];
+        this.reflectionGainSmoothing  = settings.SIMULATION.reflection_gain_smoothing;
+        this.reflectionDelaySmoothing = settings.SIMULATION.reflection_delay_smoothing;
 
     }
 
-    get_transfer_function(listener_energy) {
-        const emitter = this.inputEnergyBands_CPU_Write;
-        const transfer_function = this.transfer_function;
+    ensureIRAccumulator(irBinCount, bandCount) {
+        const total = irBinCount * bandCount;
+        if (!this.irAccumulator || this.irAccumulator.length !== total) {
+            this.irAccumulator = new Float32Array(total);
+            this.irBroadband = new Float32Array(irBinCount);
+            this.irBinCount = irBinCount;
+        }
+    }
 
-        if (!listener_energy || !emitter) return out;
+    accumulateIR(frameIR, irBinCount, bandCount) {
+        this.ensureIRAccumulator(irBinCount, bandCount);
 
-        for (let i = 0; i < this.bandCount; i++){
-            transfer_function[i] = Math.sqrt(listener_energy[i] / (emitter[i] + 1e-10));
+        const acc = this.irAccumulator;
+        const decay = this.irDecay;
+        const n = acc.length;
+
+        for (let i = 0; i < n; i++) {
+            acc[i] = acc[i] * decay + frameIR[i];
         }
 
-        return transfer_function;
+        return acc;
+    }
+
+
+    collapseIR(irHistogram, irBinCount, bandCount) {
+        const out = this.irBroadband;
+        out.fill(0);
+
+        for (let t = 0; t < irBinCount; t++) {
+            let sum = 0;
+            const base = t * bandCount;
+            for (let b = 0; b < bandCount; b++) {
+                sum += irHistogram[base + b];
+            }
+            out[t] = sum;
+        }
+
+        return out;
+    }
+
+    computeDirectTransferFromIR(
+        irHistogram,
+        irBinCount,
+        bandCount,
+        sampleRate,
+        emitter_energy
+    ) {
+        const out = this.transfer_function;
+        out.fill(0);
+
+        let firstBin = -1;
+        for (let t = 0; t < irBinCount; t++) {
+            const base = t * bandCount;
+            let sum = 0;
+            for (let b = 0; b < bandCount; b++) {
+                sum += irHistogram[base + b];
+            }
+            if (sum > 0) {
+                firstBin = t;
+                break;
+            }
+        }
+
+        if (firstBin < 0) {
+            return out;
+        }
+
+        const windowBins = Math.max(1, Math.floor(this.directSoundInterval * sampleRate));
+        const endBin = Math.min(firstBin + windowBins, irBinCount);
+
+        for (let t = firstBin; t < endBin; t++) {
+            const base = t * bandCount;
+            for (let b = 0; b < bandCount; b++) {
+                out[b] += irHistogram[base + b];
+            }
+        }
+
+        for (let b = 0; b < bandCount; b++) {
+            out[b] = Math.sqrt(out[b] / (emitter_energy[b] + 1e-10));
+        }
+
+        return out;
+    }
+
+    extractReflections(broadbandIR, sampleRate) {
+        const scratch = this.reflectionScratch;
+        scratch.length = 0;
+
+        let firstBin = -1;
+        for (let i = 0; i < broadbandIR.length; i++) {
+            if (broadbandIR[i] > 0) {
+                firstBin = i;
+                break;
+            }
+        }
+        if (firstBin < 0) return scratch;
+
+        const startBin = firstBin + Math.floor(this.directSoundInterval * sampleRate);
+
+        for (let i = startBin; i < broadbandIR.length; i++) {
+            const e = broadbandIR[i];
+            if (e <= 0) continue;
+
+            scratch.push({
+                delay: (i - firstBin) / sampleRate,
+                gain: e
+            });
+        }
+
+        scratch.sort((a, b) => b.gain - a.gain);
+        if (scratch.length > this.maxReflections) {
+            scratch.length = this.maxReflections;
+        }
+
+        return scratch;
+    }
+
+    normalizeReflections(reflections) {
+        let max = 0;
+        for (let i = 0; i < reflections.length; i++) {
+            if (reflections[i].gain > max) max = reflections[i].gain;
+        }
+
+        if (max < 1e-12) return reflections;
+
+        const inv = 1.0 / max;
+        for (let i = 0; i < reflections.length; i++) {
+            reflections[i].gain *= inv;
+        }
+
+        return reflections;
+    }
+
+    smoothReflections(reflections) {
+        const state = this._reflectionState;
+
+        while (state.length < reflections.length) {
+            state.push({
+                delay: reflections[state.length].delay,
+                gain: reflections[state.length].gain
+            });
+        }
+
+        while (state.length > reflections.length) {
+            state.pop();
+        }
+
+        for (let i = 0; i < reflections.length; i++) {
+            const s = state[i];
+            const r = reflections[i];
+
+            s.delay += this.reflectionDelaySmoothing * (r.delay - s.delay);
+            s.gain  += this.reflectionGainSmoothing  * (r.gain  - s.gain);
+
+            r.delay = s.delay;
+            r.gain  = s.gain;
+        }
+
+        return reflections;
     }
 
 
@@ -66,38 +223,49 @@ export class AudioEngine {
         const energy = this.energyTimeline[frame];
         if (!energy) return;
 
-        // let max = 0.0;
-        // for (let i = 0; i < energy.length; i++) {
-        //     if (energy[i] > max) max = energy[i];
-        // }
-
-        // const invMax = max > 1e-12 ? 1.0 / max : 0.0;
-
         const out = this.inputEnergyBands_CPU_Write;
         for (let i = 0; i < energy.length; i++) {
             out[i] = energy[i];
         }
     }
 
-
-
-
     async create() {
         if (this.audioContext) return;
 
         this.audioContext = new AudioContext();
-
         await this.audioContext.audioWorklet.addModule(
             "./core/scripts/sim_audio_processor.js"
         );
 
         this.roomNode = new AudioWorkletNode(
             this.audioContext,
-            "sim_audio_processor"
+            "sim_audio_processor",
+            {
+                processorOptions: {
+                    band_ranges: this.band_ranges,
+                    max_reflections: this.maxReflections,
+                    max_delay_sec: this.settings.SIMULATION.max_reflection_delay_seconds,
+                    aw_dry_smoothing: this.settings.SIMULATION.aw_dry_smoothing,
+                    aw_wet_smoothing: this.settings.SIMULATION.aw_wet_smoothing
+                }
+            }
         );
 
         this.roomNode.connect(this.audioContext.destination);
     }
+
+    updateRoom({ bands, reflections }) {
+        if (!this.roomNode) return;
+
+        if (bands) this.bands.set(bands);
+        if (reflections) this.reflections = reflections;
+
+        this.roomNode.port.postMessage({
+            bands: this.bands,
+            reflections: this.reflections
+        });
+    }
+
 
     generateEnergyVectors(audioBuffer) {
         const fftSize = this.energyFFTSize;
@@ -144,7 +312,7 @@ export class AudioEngine {
                 const mag2 = re * re + im * im;
 
                 for (let b = 0; b < bandCount; b++) {
-                    const [f0, f1] = BAND_RANGES[b];
+                    const [f0, f1] = this.band_ranges[b];
                     if (freq >= f0 && freq < f1) {
                         bands[b] += mag2;
                         break;
@@ -168,8 +336,7 @@ export class AudioEngine {
 
         const response = await fetch(url);
         const buffer = await response.arrayBuffer();
-        const audioBuffer =
-            await this.audioContext.decodeAudioData(buffer);
+        const audioBuffer = await this.audioContext.decodeAudioData(buffer);
 
         this.energyTimeline = this.generateEnergyVectors(audioBuffer);
         this.energySampleRate = audioBuffer.sampleRate;
@@ -213,22 +380,5 @@ export class AudioEngine {
 
     async reload(url, options = {}) {
         await this.loadSound(url, options);
-    }
-
-    updateRoom({ bands, reflections }) {
-        if (!this.roomNode) return;
-
-        if (bands) {
-            this.bands.set(bands);
-        }
-
-        if (reflections) {
-            this.reflections = reflections;
-        }
-
-        this.roomNode.port.postMessage({
-            bands: this.bands,
-            reflections: this.reflections
-        });
     }
 }
