@@ -27,7 +27,7 @@ export class Loader {
         this.vertexCount = 0;
         this.sphereIndexCount = 0; 
         this.materialCount = 0;
-        this.irBinCount = 44000;
+        this.irBinCount = settings.SIMULATION.default_sample_rate;
 
         //CPU buffers
         this.faceColors_CPU_Write = null;
@@ -116,8 +116,6 @@ export class Loader {
         const materialsResp = await fetch(this.materialJsonURL);
         const materials = await materialsResp.json();
 
-        
-
         this.createUniformBuffer();
         this.createShadowUniformBuffer();
         this.createRayComputeUniformBuffer();
@@ -142,15 +140,25 @@ export class Loader {
         this.createRayComputePipeline(ray_csh);
         this.createShadowPipeline(shadow_vsh);
         this.createMainPipeline(main_vsh, main_fsh);
-
+        
         this.initialized = true;
     }
 
-    reload(){
+    updateHiddenWallFlags(){        
         const builder = this.mesh_builder;
         const face_to_voxel = this.faceToVoxelID_CPU;
         const hide_walls = this.settings.SIMULATION.hide_walls;
         this.hiddenWallFlags_CPU = builder.buildHiddenFaceMask(face_to_voxel, hide_walls);
+    }
+
+    async rebuild(){
+        console.log("Rebuilding Pipelines");
+        
+        this.initialized = false;
+        await this.init();
+
+        console.log("Pipelines Rebuilt");
+        
     }
 
     

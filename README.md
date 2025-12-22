@@ -6,7 +6,8 @@ A simple WebGPU-based simulation of geometrical acoustics.
 - MAKE DIFFRACTION
 - MAKE INTERFERRENCE
 
-- QOL - expose recursion to settings (rebuild pipeline), optimize the array allocations when collisions happen
+
+- QOL - reloading (probably need to update references in other classes than loader), optimize the array allocations when collisions happen
 
 # CREDITS 
 - https://github.com/toji/gl-matrix
@@ -16,3 +17,6 @@ A simple WebGPU-based simulation of geometrical acoustics.
 # VALIDATION
 - how to test energy conservation
 - how to test distance correctiveness
+
+
+

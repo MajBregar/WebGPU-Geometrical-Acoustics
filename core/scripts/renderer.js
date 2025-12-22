@@ -23,6 +23,7 @@ export class Renderer {
         this.context = null;
         this.format = null;
         this.initialized = false;
+        this.wall_update = false;
         this.reload = false;
 
         this.depthView = null;
@@ -279,13 +280,22 @@ export class Renderer {
     }
 
 
-    requestReload(){
+    requestWallUpdate(){        
+        this.wall_update = true;
+    }
+
+    requestPipelineRebuild(){
         this.reload = true;
     }
 
 
-    handleReload(){
-        this.loader.reload();
+    handleWallUpdate(){        
+        this.loader.updateHiddenWallFlags();
+        this.wall_update = false;
+    }
+
+    async handleReload(){
+        await this.loader.rebuild();
         this.reload = false;
     }
 
@@ -329,8 +339,12 @@ export class Renderer {
     async renderFrame() {
         if (!this.initialized) return;
 
+        if (this.wall_update) {
+            this.handleWallUpdate();
+        }
+
         if (this.reload) {
-            this.handleReload();
+            await this.handleReload();
         }
 
         const loader = this.loader;

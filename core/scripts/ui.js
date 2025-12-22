@@ -341,7 +341,7 @@ export class UI {
                 west:  c2.checked
             };
 
-            renderer.requestReload();
+            renderer.requestWallUpdate();
         }
 
         const hw = settings.SIMULATION.hide_walls;
@@ -412,7 +412,8 @@ export class UI {
 
         if (btn) {
             btn.addEventListener("click", () => {
-                renderer.requestReload();
+                renderer.requestPipelineRebuild();
+                this.audio_engine.reload();
             });
         }
     }

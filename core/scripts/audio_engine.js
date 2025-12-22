@@ -11,6 +11,7 @@ export class AudioEngine {
         this.audioContext = null;
         this.roomNode = null;
         this.source = null;
+        this.current_url = null;
 
         this.bands = new Float32Array(this.bandCount);
         this.reflections = [];
@@ -332,6 +333,8 @@ export class AudioEngine {
             throw new Error("Call create() first");
         }
 
+        this.current_url = url;
+
         this.stop();
 
         const response = await fetch(url);
@@ -378,7 +381,9 @@ export class AudioEngine {
     }
 
 
-    async reload(url, options = {}) {
-        await this.loadSound(url, options);
+    async reload(options = {}) {
+        if (!this.current_url) return;
+
+        await this.loadSound(this.current_url, options);
     }
 }
