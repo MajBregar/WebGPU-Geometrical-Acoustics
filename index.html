@@ -10,168 +10,150 @@
 
 <body>
 
-<div id="mainRow">
-    <canvas id="gfx"></canvas>
+<div id="app">
 
-    <div id="graphsColumn">
-        <div id="inputGraphContainer">
-            <h3 style="text-align:center; margin: 5px;">Emitter Energy</h3>
-            <canvas id="energyPlot1" width="400" height="200"></canvas>
+    <!-- ================= TOP: CANVAS + GRAPHS ================= -->
+    <div id="viewportRow">
+
+        <div id="canvasWindow">
+            <canvas id="gfx"></canvas>
+            <div id="fps">FPS: 0</div>
         </div>
 
-        <div id="outputGraphContainer">
-            <h3 style="text-align:center; margin: 5px;">Room Transfer Function</h3>
-            <canvas id="energyPlot2" width="400" height="200"></canvas>
+        <div id="graphsColumn">
+            <div class="graphWindow">
+                <h3>Emitter Energy</h3>
+                <canvas id="energyPlot1"></canvas>
+            </div>
+
+            <div class="graphWindow">
+                <h3>Room Transfer Function</h3>
+                <canvas id="energyPlot2"></canvas>
+            </div>
         </div>
-    </div>
-</div>
-
-
-<div id="fps">FPS: 0</div>
-
-<div id="sliderPanel">
-    <div style="font-weight: bold; font-size: 15px; margin-bottom: 10px;">
-        Debug Menu
-    </div>
-
-    <button id="reloadBtn" style="width: 100%; margin-bottom: 12px;">Reload</button>
-
-    <div style="margin-top: 14px; font-weight: bold;">Hide Walls</div>
-
-
-    <div id="hideWallsGrid">
-        <div></div>
-        <div><input type="checkbox" id="c1"></div>
-        <div></div>
-
-        <div><input type="checkbox" id="c2"></div>
-        <div><input type="checkbox" id="c3"></div>
-        <div><input type="checkbox" id="c4"></div>
-
-        <div></div>
-        <div><input type="checkbox" id="c5"></div>
-        <div></div>
-    </div>
-
-    <div id="emitter-controls" style="margin-bottom: 20px;">
-        <h3>Emitter Position</h3>
-
-        <label>
-            Ex: <span id="ex_val">0</span>
-        </label>
-        <input id="ex_slider" type="range" min="0" max="128" value="0" step="0.01">
-
-        <label>
-            Ey: <span id="ey_val">0</span>
-        </label>
-        <input id="ey_slider" type="range" min="0" max="128" value="0" step="0.01">
-
-        <label>
-            Ez: <span id="ez_val">0</span>
-        </label>
-        <input id="ez_slider" type="range" min="0" max="128" value="0" step="0.01">
-    </div>
-
-    <div id="listener-controls">
-        <h3>Listener Position</h3>
-
-        <label>
-            Lx: <span id="lx_val">0</span>
-        </label>
-        <input id="lx_slider" type="range" min="0" max="128" value="0" step="0.01">
-
-        <label>
-            Ly: <span id="ly_val">0</span>
-        </label>
-        <input id="ly_slider" type="range" min="0" max="128" value="0" step="0.01">
-
-        <label>
-            Lz: <span id="lz_val">0</span>
-        </label>
-        <input id="lz_slider" type="range" min="0" max="128" value="0" step="0.01">
 
     </div>
 
-    <div id="heatmap-controls">
-        <h3>Heatmap Controls</h3>
+    <!-- ================= CONTROLS ================= -->
+    <div id="controlsPanel">
 
-        <label>
-            Visualization Sens: <span id="lsens_val">1</span>
-        </label>
-        <input id="lsens_slider" type="range" min="0" max="10" value="0" step="0.01">
+        <!-- Reload -->
+        <div class="controlsGroup">
 
-        <div class="heatmap-modes">
-            <label class="heatmap-mode">
-                <span>Disabled</span>
-                <input type="checkbox" id="hm_disabled">
+            <label>
+                Max recursion depth: <span id="rec_depth_val">1</span>
             </label>
+            <input
+                id="rec_depth_slider"
+                type="range"
+                min="1"
+                max="6"
+                step="1"
+                value="1"
+            >
 
-            <label class="heatmap-mode">
-                <span>Absorbed</span>
-                <input type="checkbox" id="hm_absorbed">
+            <label>
+                Max rec. stack size: <span id="rec_entry_val">1</span>
             </label>
+            <input
+                id="rec_entry_slider"
+                type="range"
+                min="1"
+                max="32"
+                step="1"
+                value="1"
+            >
 
-            <label class="heatmap-mode">
-                <span>Bounces</span>
-                <input type="checkbox" id="hm_bounces">
-            </label>
-        </div>
-    </div>
-
-
-    <div id="file-selection-controls">
-        <h3>Input File Selection</h3>
-
-        <!-- File selector -->
-        <input
-            type="file"
-            id="audio-file-input"
-            accept="audio/*"
-            />
-
-        <!-- Selected file display -->
-        <div id="selected-audio-file">
-            No file selected
+            <button id="reloadBtn">Save</button>
         </div>
 
-        <!-- Controls (to be wired later) -->
-        <div class="audio-file-controls">
-            <button id="play-toggle-button" disabled>
-                Load
-            </button>
+
+        <!-- Hide walls -->
+        <div class="controlsGroup">
+            <h3>Hide Walls</h3>
+            <div id="hideWallsGrid">
+                <div></div><div><input type="checkbox" id="c1"></div><div></div>
+                <div><input type="checkbox" id="c2"></div>
+                <div><input type="checkbox" id="c3"></div>
+                <div><input type="checkbox" id="c4"></div>
+                <div></div><div><input type="checkbox" id="c5"></div><div></div>
+            </div>
         </div>
+
+        <!-- Emitter -->
+        <div class="controlsGroup">
+            <div id="emitter-controls">
+                <h3>Emitter Position</h3>
+
+                <label>Ex: <span id="ex_val">0</span></label>
+                <input id="ex_slider" type="range" min="0" max="128" step="0.01">
+
+                <label>Ey: <span id="ey_val">0</span></label>
+                <input id="ey_slider" type="range" min="0" max="128" step="0.01">
+
+                <label>Ez: <span id="ez_val">0</span></label>
+                <input id="ez_slider" type="range" min="0" max="128" step="0.01">
+            </div>
+        </div>
+
+        <!-- Listener -->
+        <div class="controlsGroup">
+            <div id="listener-controls">
+                <h3>Listener Position</h3>
+
+                <label>Lx: <span id="lx_val">0</span></label>
+                <input id="lx_slider" type="range" min="0" max="128" step="0.01">
+
+                <label>Ly: <span id="ly_val">0</span></label>
+                <input id="ly_slider" type="range" min="0" max="128" step="0.01">
+
+                <label>Lz: <span id="lz_val">0</span></label>
+                <input id="lz_slider" type="range" min="0" max="128" step="0.01">
+            </div>
+        </div>
+
+        <!-- Heatmap -->
+        <div class="controlsGroup">
+            <div id="heatmap-controls">
+                <h3>Heatmap Controls</h3>
+
+                <label>
+                    Visualization Sens: <span id="lsens_val">1</span>
+                </label>
+                <input id="lsens_slider" type="range" min="0" max="10" step="0.01">
+
+                <div class="heatmap-modes">
+                    <label>
+                        Disabled <input type="checkbox" id="hm_disabled">
+                    </label>
+                    <label>
+                        Absorbed <input type="checkbox" id="hm_absorbed">
+                    </label>
+                    <label>
+                        Bounces <input type="checkbox" id="hm_bounces">
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audio file -->
+        <div class="controlsGroup">
+            <div id="file-selection-controls">
+                <h3>Input File Selection</h3>
+
+                <input type="file" id="audio-file-input" accept="audio/*">
+
+                <div id="selected-audio-file">No file selected</div>
+
+                <button id="play-toggle-button" disabled>Load</button>
+            </div>
+        </div>
+
     </div>
-
-
-
-
-    <div id="debug-sliders">
-        <h3>DEBUG SLIDERS</h3>
-        <label>
-            Lx: <span id="dx_val">0</span>
-        </label>
-        <input id="dx_slider" type="range" min="0" max="10" value="0" step="0.01">
-
-        <label>
-            Ly: <span id="dy_val">0</span>
-        </label>
-        <input id="dy_slider" type="range" min="0" max="128" value="0" step="0.01">
-
-        <label>
-            Lz: <span id="dz_val">0</span>
-        </label>
-        <input id="dz_slider" type="range" min="0" max="128" value="0" step="0.01">
-    </div>
-
-
-
-
 
 </div>
-
-
 
 <script type="module" src="main.js"></script>
-
 </body>
+
 </html>

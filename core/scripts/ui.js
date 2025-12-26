@@ -177,7 +177,7 @@ export class UI {
             // LOAD
             if (state === "idle") {
                 const url = URL.createObjectURL(currentFile);
-
+            
                 await engine.create();
                 await engine.loadSound(url, { loop: false });
 
@@ -236,6 +236,13 @@ export class UI {
             sensv: document.getElementById("lsens_val")
         };
 
+        const recursion = {
+            depth: document.getElementById("rec_depth_slider"),
+            depthv: document.getElementById("rec_depth_val"),
+            entries: document.getElementById("rec_entry_slider"),
+            entriesv: document.getElementById("rec_entry_val"),
+        };
+
         const debug = {
             x: document.getElementById("dx_slider"),
             y: document.getElementById("dy_slider"),
@@ -263,6 +270,14 @@ export class UI {
         const visualization_sensitivity = settings.SIMULATION.heatmap_sensitivity;
         heatmap.sens.value = visualization_sensitivity;
         heatmap.sensv.textContent = visualization_sensitivity;
+
+        const max_recursion_level = settings.SIMULATION.max_recursion_level;
+        recursion.depth.value = max_recursion_level;
+        recursion.depthv.textContent = max_recursion_level;
+
+        const max_recursion_entries = settings.SIMULATION.max_recursion_entries;
+        recursion.entries.value = max_recursion_entries;
+        recursion.entriesv.textContent = max_recursion_entries;
 
         function updateEmitter() {
             const x = Number(emit.x.value);
@@ -295,14 +310,15 @@ export class UI {
             settings.SIMULATION.heatmap_sensitivity = s;
         }
 
-        function updateDebug() {
-            const x = Number(debug.x.value);
-            const y = Number(debug.y.value);
-            const z = Number(debug.z.value);
+        function updateRecursionSettings() {
+            const d = Number(recursion.depth.value);
+            const e = Number(recursion.entries.value);
 
-            debug.xv.textContent = x;
-            debug.yv.textContent = y;
-            debug.zv.textContent = z;
+            recursion.depthv.textContent = d;
+            recursion.entriesv.textContent = e;
+
+            settings.SIMULATION.max_recursion_level = d;
+            settings.SIMULATION.max_recursion_entries = e;
         }
 
         emit.x.addEventListener("input", updateEmitter);
@@ -315,10 +331,9 @@ export class UI {
 
         heatmap.sens.addEventListener("input", updateHeatmap);
 
+        recursion.depth.addEventListener("input", updateRecursionSettings);
+        recursion.entries.addEventListener("input", updateRecursionSettings);
 
-        debug.x.addEventListener("input", updateDebug);
-        debug.y.addEventListener("input", updateDebug);
-        debug.z.addEventListener("input", updateDebug);
     }
 
     initWallCheckboxes() {
@@ -409,12 +424,47 @@ export class UI {
     initReloadButton() {
         const btn = document.getElementById("reloadBtn");
         const renderer = this.renderer;
+        const engine   = this.audio_engine;
 
-        if (btn) {
-            btn.addEventListener("click", () => {
-                renderer.requestPipelineRebuild();
-                this.audio_engine.reload();
-            });
-        }
+        const fileInput = document.getElementById("audio-file-input");
+        const fileLabel = document.getElementById("selected-audio-file");
+        const button    = document.getElementById("play-toggle-button");
+
+        if (!btn) return;
+
+        let saving = false;
+
+        btn.addEventListener("click", () => {
+            if (saving) return;
+
+            saving = true;
+
+            // --- existing behavior ---
+            renderer.requestPipelineRebuild();
+            engine.reload();
+
+            try {
+                engine.stop?.();
+                engine.pause?.();
+            } catch (e) {}
+
+            fileInput.value = "";
+            fileLabel.textContent = "No file selected";
+            button.textContent = "Load";
+            button.disabled = true;
+            // -------------------------
+
+            // --- save feedback ---
+            btn.textContent = "Saved";
+            btn.disabled = true;
+
+            setTimeout(() => {
+                btn.textContent = "Save";
+                btn.disabled = false;
+                saving = false;
+            }, 2000);
+        });
     }
+
+
 }

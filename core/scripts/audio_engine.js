@@ -222,6 +222,7 @@ export class AudioEngine {
         );
 
         const energy = this.energyTimeline[frame];
+        
         if (!energy) return;
 
         const out = this.inputEnergyBands_CPU_Write;
@@ -348,6 +349,7 @@ export class AudioEngine {
         this.source.buffer = audioBuffer;
         this.source.loop = loop;
         this.source.connect(this.roomNode);
+
     }
 
 
@@ -384,6 +386,12 @@ export class AudioEngine {
     async reload(options = {}) {
         if (!this.current_url) return;
 
+        const loader = this.loader;
+
+        this.inputEnergyBands_CPU_Write = loader.energyBands_CPU;
+        this.stop();
         await this.loadSound(this.current_url, options);
+        this.inputEnergyBands_CPU_Write.fill(0);
     }
+
 }

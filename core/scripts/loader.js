@@ -109,10 +109,6 @@ export class Loader {
 
 
     async init() {
-        const ray_csh = await this.loadShader(this.rayTracingComputeShaderURL);
-        const shadow_vsh = await this.loadShader(this.shadowVertexShaderURL);
-        const main_vsh = await this.loadShader(this.vertexShaderURL);
-        const main_fsh = await this.loadShader(this.fragmentShaderURL);
         const materialsResp = await fetch(this.materialJsonURL);
         const materials = await materialsResp.json();
 
@@ -137,11 +133,20 @@ export class Loader {
         this.createListenerBuffers();
 
 
+        await this.buildPipelines();
+        
+        this.initialized = true;
+    }
+
+    async buildPipelines() {
+        const ray_csh = await this.loadShader(this.rayTracingComputeShaderURL);
+        const shadow_vsh = await this.loadShader(this.shadowVertexShaderURL);
+        const main_vsh = await this.loadShader(this.vertexShaderURL);
+        const main_fsh = await this.loadShader(this.fragmentShaderURL);
+
         this.createRayComputePipeline(ray_csh);
         this.createShadowPipeline(shadow_vsh);
         this.createMainPipeline(main_vsh, main_fsh);
-        
-        this.initialized = true;
     }
 
     updateHiddenWallFlags(){        
@@ -152,12 +157,16 @@ export class Loader {
     }
 
     async rebuild(){
-        console.log("Rebuilding Pipelines");
+        //console.log("Rebuilding Pipelines");
         
-        this.initialized = false;
-        await this.init();
+        // this.settings.SIMULATION.max_recursion_level = 6;
+        // this.settings.SIMULATION.max_recursion_entries = 32;
 
-        console.log("Pipelines Rebuilt");
+        this.initialized = false;
+        await this.buildPipelines();
+        this.initialized = true;
+
+        //console.log("Pipelines Rebuilt");
         
     }
 

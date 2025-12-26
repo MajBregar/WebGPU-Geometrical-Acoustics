@@ -7,7 +7,7 @@ A simple WebGPU-based simulation of geometrical acoustics.
 - MAKE INTERFERRENCE
 
 
-- QOL - reloading (probably need to update references in other classes than loader), optimize the array allocations when collisions happen
+- QOL - optimize the array allocations when collisions happen
 
 # CREDITS 
 - https://github.com/toji/gl-matrix

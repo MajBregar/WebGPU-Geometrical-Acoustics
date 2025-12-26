@@ -58,7 +58,7 @@ async function simulationLoop() {
 
     await renderer.renderFrame();
     const emitter_energy = loader.energyBands_CPU;
-
+    
     if (audio_engine.audioContext && audio_engine.isPlaying) {
 
         const frameIR     = renderer.listenerEnergy;
