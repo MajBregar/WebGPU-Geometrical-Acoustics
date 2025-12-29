@@ -482,7 +482,7 @@ export class Loader {
         const band_count = this.energyBandCount;
         const materials = this.materials;
 
-        const FLOATS_PER_MATERIAL = band_count * 7 + 1;
+        const FLOATS_PER_MATERIAL = band_count * 6 + 1;
 
         const materialCount = materials.length;
         const materialData = new Float32Array(materialCount * FLOATS_PER_MATERIAL);
@@ -494,7 +494,6 @@ export class Loader {
 
             for (let b = 0; b < band_count; b++) {
                 const sum =
-                    mat.absorption[b] +
                     mat.reflection[b] +
                     mat.transmission[b] +
                     mat.refraction[b];
@@ -506,8 +505,6 @@ export class Loader {
                 }
             }
 
-
-            materialData.set(mat.absorption,   offset); offset += band_count;
             materialData.set(mat.reflection,   offset); offset += band_count;
             materialData.set(mat.transmission, offset); offset += band_count;
             materialData.set(mat.refraction,   offset); offset += band_count;

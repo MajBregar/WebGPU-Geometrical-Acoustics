@@ -14,6 +14,8 @@ if (!adapter) {
     throw new Error("WebGPU adapter not found.");
 }
 const device = await adapter.requestDevice();
+device.pushErrorScope("validation");
+
 
 
 const settingsResponse = await fetch("./settings.json");
@@ -120,3 +122,6 @@ async function simulationLoop() {
 
 
 simulationLoop();
+const error = await device.popErrorScope();
+
+if (error) console.error(error);
