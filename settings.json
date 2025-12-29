@@ -39,7 +39,7 @@
             [11314, 22627]
         ],
 
-        "direct_sound_interval" : 0.020,
+        "direct_sound_interval" : 0.030,
         "max_reflections" : 16,
         "reflection_sample_interval" : 0.1,
         "max_reflection_delay_seconds" : 1.0,

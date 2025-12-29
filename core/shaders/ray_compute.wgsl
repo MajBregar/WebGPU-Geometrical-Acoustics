@@ -2,7 +2,7 @@
 const MAX_BANDS        : u32 = __MAX_BANDS__;
 const MAX_RAY_DEPTH   : u32 = __MAX_RAY_DEPTH__;
 const MAX_STACK_SIZE  : u32 = __MAX_STACK_SIZE__;
-
+const MATERIAL_AIR_ID : u32 = 0u;
 
 struct RayUniforms {
     roomSize    : vec3<u32>,
@@ -31,14 +31,14 @@ struct FaceStats {
 };
 
 struct Material {
-    absorption        : array<f32, MAX_BANDS>, // absorbed fraction (lost as heat)
-    reflection        : array<f32, MAX_BANDS>, // reflected fraction (before diffuse/spec split)
-    transmission      : array<f32, MAX_BANDS>, // straight-through transmission (same direction)
-    refraction        : array<f32, MAX_BANDS>, // refractive transmission (Snell direction)
+    absorption        : array<f32, MAX_BANDS>, // absorbed fraction
+    reflection        : array<f32, MAX_BANDS>, // reflected fraction
+    transmission      : array<f32, MAX_BANDS>, // straight-through transmission
+    refraction        : array<f32, MAX_BANDS>, // refractive transmission
     attenuation       : array<f32, MAX_BANDS>, // volumetric attenuation per meter
     diffusion         : array<f32, MAX_BANDS>, // fraction of reflection that is diffuse
     diffraction       : array<f32, MAX_BANDS>, // low-frequency diffraction participation
-    refractive_index  : f32                    // Snell’s law index (n)
+    refractive_index  : f32                    // Snell’s law index
 };
 
 struct RayStackEntry {
@@ -49,8 +49,6 @@ struct RayStackEntry {
     material : u32,
     flight_len : f32
 };
-
-const MATERIAL_AIR_ID : u32 = 0u;
 
 @group(0) @binding(0)
 var<uniform> uni : RayUniforms;

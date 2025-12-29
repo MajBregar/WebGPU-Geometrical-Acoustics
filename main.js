@@ -61,18 +61,18 @@ async function simulationLoop() {
     
     if (audio_engine.audioContext && audio_engine.isPlaying) {
 
-        const frameIR     = renderer.listenerEnergy;
+        const frameData     = renderer.listenerEnergy;
         const irBinCount  = 44000;
         const sampleRate  = audio_engine.audioContext.sampleRate;
 
-        const accumulatedIR = audio_engine.accumulateIR(
-                frameIR,
+        const accumulatedCoefs = audio_engine.accumulateCoefs(
+                frameData,
                 irBinCount,
                 audio_engine.bandCount
             );
 
-        const transfer_function = audio_engine.computeDirectTransferFromIR(
-                frameIR,
+        const room_coefficients = audio_engine.computeTransmissionCoefs(
+                frameData,
                 irBinCount,
                 audio_engine.bandCount,
                 sampleRate,
@@ -84,8 +84,8 @@ async function simulationLoop() {
         let reflections = audio_engine._cachedReflections;
 
         if (now - audio_engine._lastReflectionUpdate > audio_engine._reflectionUpdateInterval) {
-            const broadbandIR = audio_engine.collapseIR(
-                accumulatedIR,
+            const broadbandIR = audio_engine.collapseHistogram(
+                accumulatedCoefs,
                 irBinCount,
                 audio_engine.bandCount
             );
@@ -103,11 +103,11 @@ async function simulationLoop() {
         }
 
         audio_engine.updateRoom({
-            bands: transfer_function,
+            bands: room_coefficients,
             reflections: reflections
         });
 
-        ui.updateGraph(outputGraph, ui.normalize_curve(transfer_function));
+        ui.updateGraph(outputGraph, ui.normalize_curve(room_coefficients));
     }
 
     ui.updateGraph(inputGraph, ui.normalize_curve(emitter_energy));

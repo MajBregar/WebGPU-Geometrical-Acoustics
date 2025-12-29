@@ -49,7 +49,7 @@ export class AudioEngine {
 
     }
 
-    ensureIRAccumulator(irBinCount, bandCount) {
+    ensureAccumulator(irBinCount, bandCount) {
         const total = irBinCount * bandCount;
         if (!this.irAccumulator || this.irAccumulator.length !== total) {
             this.irAccumulator = new Float32Array(total);
@@ -58,8 +58,8 @@ export class AudioEngine {
         }
     }
 
-    accumulateIR(frameIR, irBinCount, bandCount) {
-        this.ensureIRAccumulator(irBinCount, bandCount);
+    accumulateCoefs(frameIR, irBinCount, bandCount) {
+        this.ensureAccumulator(irBinCount, bandCount);
 
         const acc = this.irAccumulator;
         const decay = this.irDecay;
@@ -73,7 +73,7 @@ export class AudioEngine {
     }
 
 
-    collapseIR(irHistogram, irBinCount, bandCount) {
+    collapseHistogram(irHistogram, irBinCount, bandCount) {
         const out = this.irBroadband;
         out.fill(0);
 
@@ -89,7 +89,7 @@ export class AudioEngine {
         return out;
     }
 
-    computeDirectTransferFromIR(
+    computeTransmissionCoefs(
         irHistogram,
         irBinCount,
         bandCount,
