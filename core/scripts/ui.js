@@ -17,15 +17,21 @@ export class UI {
         this.initHeatmapCheckboxes();
         this.initAudioFileControls();
 
+        this.emitter_zoom = Math.pow(2, settings.CONTROLS.emitter_start_zoom);
+        this.listener_zoom = Math.pow(2, settings.CONTROLS.listener_start_zoom);
+
         this.inputGraph  = this.createGraph("energyPlot1");
-        this.addYLabels("energyPlot1", this.inputGraph.bounds, this.inputGraph.ymaxValue);
+        this.inputGraph.yScale = 1.0 / this.emitter_zoom;
+        this.addYLabels("energyPlot1", this.inputGraph.bounds, this.inputGraph.ymaxValue, this.emitter_zoom);
 
         this.outputGraph = this.createGraph("energyPlot2");
-        this.addYLabels("energyPlot2", this.outputGraph.bounds, this.outputGraph.ymaxValue);
+        this.outputGraph.yScale = 1.0 / this.listener_zoom;
+        this.addYLabels("energyPlot2", this.outputGraph.bounds, this.outputGraph.ymaxValue, this.listener_zoom);
 
+        this.initPlotButtons();
     }
 
-    addYLabels(canvasId, bounds, ymaxValue) {
+    addYLabels(canvasId, bounds, ymaxValue, scale = 1.0) {
         const canvas = document.getElementById(canvasId);
         const container = canvas.parentElement;
 
@@ -35,19 +41,19 @@ export class UI {
 
         const heightPx = canvas.height;
         const widthPx  = canvas.width;
+
         const yAxisOffset = 0.03;
         const yAxisX = bounds.Xmin + yAxisOffset;
-
         const xPixel = ((yAxisX + 1) / 2) * widthPx;
 
         for (const v of YTICKS) {
             const ty = bounds.Ymin + (v / ymaxValue) * (bounds.Ymax - bounds.Ymin);
-
             const yPixel = (1 - (ty + 1) / 2) * heightPx;
 
             const label = document.createElement("div");
             label.className = "y-label";
-            label.textContent = v.toFixed(2);
+            const value = v * scale;
+            label.textContent = value > 1 ? value.toString() : value.toFixed(2);
 
             label.style.top  = `${yPixel - 7}px`;
             label.style.left = `${xPixel - 8}px`;
@@ -55,6 +61,61 @@ export class UI {
             container.appendChild(label);
         }
     }
+
+    initPlotButtons() {
+
+        document.getElementById("plot1_plus").onclick = () => {
+            this.emitter_zoom /= 2;
+            this.inputGraph.yScale *= 2;
+
+            this.addYLabels(
+                "energyPlot1",
+                this.inputGraph.bounds,
+                this.inputGraph.ymaxValue,
+                this.emitter_zoom
+            );
+        };
+
+        document.getElementById("plot1_minus").onclick = () => {
+            this.emitter_zoom *= 2;
+            this.inputGraph.yScale /= 2;
+
+            this.addYLabels(
+                "energyPlot1",
+                this.inputGraph.bounds,
+                this.inputGraph.ymaxValue,
+                this.emitter_zoom
+            );
+        };
+
+        document.getElementById("plot2_plus").onclick = () => {
+            this.listener_zoom /= 2;
+            this.outputGraph.yScale *= 2;
+
+            this.addYLabels(
+                "energyPlot2",
+                this.outputGraph.bounds,
+                this.outputGraph.ymaxValue,
+                this.listener_zoom
+            );
+        };
+
+        document.getElementById("plot2_minus").onclick = () => {
+            this.listener_zoom*= 2;
+            this.outputGraph.yScale /= 2;
+
+            this.addYLabels(
+                "energyPlot2",
+                this.outputGraph.bounds,
+                this.outputGraph.ymaxValue,
+                this.listener_zoom
+            );
+        };
+    }
+
+
+
+
 
 
 
@@ -72,7 +133,7 @@ export class UI {
         const Ymin = -1 + offset;
         const Ymax =  1 - offset;
 
-        const yAxisOffset = 0.1;
+        const yAxisOffset = 0.12;
         const Y_AXIS_X = Xmin + yAxisOffset;
 
         const X_AXIS_START = Y_AXIS_X;
@@ -189,16 +250,23 @@ export class UI {
         const { mainLine, wglp, sampleCount, bounds } = graph;
         const { Ymin, Ymax } = bounds;
 
+        const scale = graph.yScale ?? 1.0;
+
         const n = Math.min(values.length, sampleCount);
 
         for (let i = 0; i < n; i++) {
-            const v = values[i];
-            const y = Ymin + (v / 1.2) * (Ymax - Ymin);
+            const v = values[i] * scale;
+
+            const y =
+                Ymin +
+                (v / graph.ymaxValue) * (Ymax - Ymin);
+
             mainLine.setY(i, y);
         }
 
         wglp.update();
     }
+
 
     initAudioFileControls() {
         const engine = this.audio_engine;

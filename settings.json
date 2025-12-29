@@ -84,7 +84,9 @@
         "start_pitch" : 0.5,
         "start_zoom" :40,
         "min_zoom" : 0.5,
-        "max_zoom" : 700
+        "max_zoom" : 700,
+        "emitter_start_zoom" : 16,
+        "listener_start_zoom" : -1
     }
 
     

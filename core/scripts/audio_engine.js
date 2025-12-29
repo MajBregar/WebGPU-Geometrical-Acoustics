@@ -17,6 +17,7 @@ export class AudioEngine {
         this.reflections = [];
 
         this.isPlaying = false;
+        this.isPaused = false;
         this.playbackStartTime = 0;
 
         this.inputEnergyBands_CPU_Write = loader.energyBands_CPU;
@@ -146,15 +147,29 @@ export class AudioEngine {
         }
         if (firstBin < 0) return scratch;
 
-        const startBin = firstBin + Math.floor(this.directSoundInterval * sampleRate);
+        const windowBins = Math.floor(this.directSoundInterval * sampleRate);
+        const endBin = Math.min(firstBin + windowBins, broadbandIR.length);
 
-        for (let i = startBin; i < broadbandIR.length; i++) {
+        let directEnergy = 0;
+        for (let i = firstBin; i < endBin; i++) {
+            directEnergy += broadbandIR[i];
+        }
+
+        if (directEnergy < 1e-12) return scratch;
+
+        const invDirect = 1.0 / directEnergy;
+
+        console.log(windowBins, directEnergy, invDirect);
+        
+
+        // ---- Extract & normalize reflections ----
+        for (let i = endBin; i < broadbandIR.length; i++) {
             const e = broadbandIR[i];
             if (e <= 0) continue;
 
             scratch.push({
                 delay: (i - firstBin) / sampleRate,
-                gain: e
+                gain: e * invDirect
             });
         }
 
@@ -166,21 +181,6 @@ export class AudioEngine {
         return scratch;
     }
 
-    normalizeReflections(reflections) {
-        let max = 0;
-        for (let i = 0; i < reflections.length; i++) {
-            if (reflections[i].gain > max) max = reflections[i].gain;
-        }
-
-        if (max < 1e-12) return reflections;
-
-        const inv = 1.0 / max;
-        for (let i = 0; i < reflections.length; i++) {
-            reflections[i].gain *= inv;
-        }
-
-        return reflections;
-    }
 
     smoothReflections(reflections) {
         const state = this._reflectionState;
@@ -365,11 +365,13 @@ export class AudioEngine {
     pause() {
         if (!this.audioContext) return;
         this.audioContext.suspend();
+        this.isPaused = true;
     }
 
     resume() {
         if (!this.audioContext) return;
         this.audioContext.resume();
+        this.isPaused = false;
     }
 
     stop() {

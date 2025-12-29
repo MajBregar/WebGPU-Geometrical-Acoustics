@@ -141,6 +141,31 @@ h3 {
 }
 
 
+.graphHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.graphHeader h3 {
+    margin: 0;
+}
+
+.graphControls {
+    display: flex;
+    gap: 6px;
+}
+
+.graphBtn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+
 /* ============================================================
    Controls Panel
    ============================================================ */

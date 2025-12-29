@@ -61,9 +61,9 @@ async function simulationLoop() {
     await renderer.renderFrame();
     const emitter_energy = loader.energyBands_CPU;
 
-    if (audio_engine.audioContext && audio_engine.isPlaying) {
+    if (audio_engine.audioContext && audio_engine.isPlaying && !audio_engine.isPaused) {
 
-        const frameData     = renderer.listenerEnergy;
+        const frameData   = renderer.listenerEnergy;
         const irBinCount  = 44000;
         const sampleRate  = audio_engine.audioContext.sampleRate;
 
@@ -96,8 +96,9 @@ async function simulationLoop() {
                 broadbandIR,
                 sampleRate
             );
-
-            audio_engine.normalizeReflections(reflections);
+            
+            console.log(reflections);
+            
             audio_engine.smoothReflections(reflections);
 
             audio_engine._cachedReflections = reflections;
@@ -112,7 +113,7 @@ async function simulationLoop() {
         ui.updateGraph(outputGraph, room_coefficients);
     }
 
-    ui.updateGraph(inputGraph, ui.normalize_curve(emitter_energy));
+    ui.updateGraph(inputGraph, emitter_energy);
 
 
     updateGPUFPS(start);

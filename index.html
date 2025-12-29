@@ -22,7 +22,13 @@
 
         <div id="graphsColumn">
             <div class="graphWindow">
-                <h3>Emitter Energy Vector</h3>
+                <div class="graphHeader">
+                    <h3>Emitter Energy Vector</h3>
+                    <div class="graphControls">
+                        <button id="plot1_minus" class="graphBtn">−</button>
+                        <button id="plot1_plus"  class="graphBtn">+</button>
+                    </div>
+                </div>
 
                 <div class="plotContainer">
                     <canvas id="energyPlot1"></canvas>
@@ -30,13 +36,21 @@
             </div>
 
             <div class="graphWindow">
-                <h3>Room Transmission Coefficients</h3>
+                <div class="graphHeader">
+                    <h3>Room Transmission Coefficients</h3>
+                    <div class="graphControls">
+                        <button id="plot2_minus" class="graphBtn">−</button>
+                        <button id="plot2_plus"  class="graphBtn">+</button>
+                    </div>
+                </div>
 
                 <div class="plotContainer">
                     <canvas id="energyPlot2"></canvas>
                 </div>
             </div>
         </div>
+
+
 
 
     </div>
