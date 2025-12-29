@@ -482,7 +482,7 @@ export class Loader {
         const band_count = this.energyBandCount;
         const materials = this.materials;
 
-        const FLOATS_PER_MATERIAL = band_count * 6 + 1;
+        const FLOATS_PER_MATERIAL = band_count * 4 + 2;
 
         const materialCount = materials.length;
         const materialData = new Float32Array(materialCount * FLOATS_PER_MATERIAL);
@@ -492,26 +492,12 @@ export class Loader {
         for (let m = 0; m < materialCount; m++) {
             const mat = materials[m];
 
-            for (let b = 0; b < band_count; b++) {
-                const sum =
-                    mat.reflection[b] +
-                    mat.transmission[b] +
-                    mat.refraction[b];
-
-                if (sum > 1.001) {
-                    throw new Error(
-                        `Material ${mat.name}, band ${b} violates energy conservation`
-                    );
-                }
-            }
-
-            materialData.set(mat.reflection,   offset); offset += band_count;
-            materialData.set(mat.transmission, offset); offset += band_count;
             materialData.set(mat.refraction,   offset); offset += band_count;
             materialData.set(mat.attenuation,  offset); offset += band_count;
             materialData.set(mat.diffusion,    offset); offset += band_count;
             materialData.set(mat.diffraction,  offset); offset += band_count;
-            materialData[offset++] = mat.refractive_index;
+            materialData[offset++] = mat.speed_of_sound;
+            materialData[offset++] = mat.density;
         }
 
         this.materials_CPU = materialData;

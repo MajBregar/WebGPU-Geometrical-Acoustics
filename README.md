@@ -6,6 +6,7 @@ A simple WebGPU-based simulation of geometrical acoustics.
 - GRAPH UNITS
 - CORRECT MATERIAL COEFFICIENTS
 - check why im normalizing reflections
+- ZOOM FEATURE ON GRAPH
 
 # TODO
 - MAKE DIFFRACTION

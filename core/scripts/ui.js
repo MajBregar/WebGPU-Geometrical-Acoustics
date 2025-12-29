@@ -18,8 +18,45 @@ export class UI {
         this.initAudioFileControls();
 
         this.inputGraph  = this.createGraph("energyPlot1");
+        this.addYLabels("energyPlot1", this.inputGraph.bounds, this.inputGraph.ymaxValue);
+
         this.outputGraph = this.createGraph("energyPlot2");
+        this.addYLabels("energyPlot2", this.outputGraph.bounds, this.outputGraph.ymaxValue);
+
     }
+
+    addYLabels(canvasId, bounds, ymaxValue) {
+        const canvas = document.getElementById(canvasId);
+        const container = canvas.parentElement;
+
+        container.querySelectorAll(".y-label").forEach(e => e.remove());
+
+        const YTICKS = [0, 0.25, 0.5, 0.75, 1.0];
+
+        const heightPx = canvas.height;
+        const widthPx  = canvas.width;
+        const yAxisOffset = 0.03;
+        const yAxisX = bounds.Xmin + yAxisOffset;
+
+        const xPixel = ((yAxisX + 1) / 2) * widthPx;
+
+        for (const v of YTICKS) {
+            const ty = bounds.Ymin + (v / ymaxValue) * (bounds.Ymax - bounds.Ymin);
+
+            const yPixel = (1 - (ty + 1) / 2) * heightPx;
+
+            const label = document.createElement("div");
+            label.className = "y-label";
+            label.textContent = v.toFixed(2);
+
+            label.style.top  = `${yPixel - 7}px`;
+            label.style.left = `${xPixel - 8}px`;
+
+            container.appendChild(label);
+        }
+    }
+
+
 
     createGraph(divID) {
         const plot = document.getElementById(divID);
@@ -30,65 +67,84 @@ export class UI {
         const graphSampleCount = this.settings.SIMULATION.energy_bands;
         const offset = 0.05;
 
-        // Coordinate bounds inside plot region
         const Xmin = -1 + offset;
         const Xmax =  1 - offset;
         const Ymin = -1 + offset;
         const Ymax =  1 - offset;
 
-        // ----------------------------
-        // WebglPlot instance
-        // ----------------------------
+        const yAxisOffset = 0.1;
+        const Y_AXIS_X = Xmin + yAxisOffset;
+
+        const X_AXIS_START = Y_AXIS_X;
+        const X_AXIS_END   = Xmax;
+
         const wglp = new WebglPlot(plot);
 
-        // ----------------------------
-        // Main data line
-        // ----------------------------
         const mainLine = new WebglLine(new ColorRGBA(1, 0, 0, 1), graphSampleCount);
         mainLine.lineWidth = 2;
 
         for (let i = 0; i < graphSampleCount; i++) {
             const t = i / (graphSampleCount - 1);
-            mainLine.setX(i, Xmin + t * (Xmax - Xmin));
+            mainLine.setX(i, X_AXIS_START + t * (X_AXIS_END - X_AXIS_START));
             mainLine.setY(i, Ymin);
         }
 
         wglp.addLine(mainLine);
 
-        // ----------------------------
-        // X axis
-        // ----------------------------
         const xAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
-        xAxis.setX(0, Xmin); xAxis.setY(0, Ymin);
-        xAxis.setX(1, Xmax); xAxis.setY(1, Ymin);
+        xAxis.setX(0, X_AXIS_START); xAxis.setY(0, Ymin);
+        xAxis.setX(1, X_AXIS_END);   xAxis.setY(1, Ymin);
         wglp.addLine(xAxis);
 
-        // ----------------------------
-        // Y axis
-        // ----------------------------
         const yAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
-        yAxis.setX(0, Xmin); yAxis.setY(0, Ymin);
-        yAxis.setX(1, Xmin); yAxis.setY(1, Ymax);
+        yAxis.setX(0, Y_AXIS_X); yAxis.setY(0, Ymin);
+        yAxis.setX(1, Y_AXIS_X); yAxis.setY(1, Ymax);
         wglp.addLine(yAxis);
 
-        // ----------------------------
-        // Y ticks (0 to 1.2)
-        // ----------------------------
-        const YTICKS = [0, 0.3, 0.6, 0.9, 1.2];
+        const YTICKS = [0, 0.25, 0.5, 0.75, 1.0];
         const yTicks = [];
 
         for (let tVal of YTICKS) {
             const ty = Ymin + (tVal / 1.2) * (Ymax - Ymin);
             const tick = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
 
-            tick.setX(0, Xmin);
+            tick.setX(0, Y_AXIS_X);
             tick.setY(0, ty);
 
-            tick.setX(1, Xmin + 0.03);
+            tick.setX(1, Y_AXIS_X + 0.03);
             tick.setY(1, ty);
 
             yTicks.push(tick);
             wglp.addLine(tick);
+        }
+
+        const GRID_COUNT = 10;
+        const gridLines = [];
+
+        for (let i = 0; i < GRID_COUNT; i++) {
+            const t = i / (GRID_COUNT - 1);
+
+            const gx = X_AXIS_START + t * (X_AXIS_END - X_AXIS_START);
+
+            const SEGMENTS = 20;
+            const dotted = new WebglLine(
+                new ColorRGBA(0, 0, 0, 0.3),
+                SEGMENTS * 2
+            );
+
+            for (let s = 0; s < SEGMENTS; s++) {
+                const y0 = Ymin + (s / SEGMENTS) * (Ymax - Ymin);
+                const y1 = Ymin + ((s + 0.5) / SEGMENTS) * (Ymax - Ymin);
+
+                dotted.setX(s * 2,     gx);
+                dotted.setY(s * 2,     y0);
+
+                dotted.setX(s * 2 + 1, gx);
+                dotted.setY(s * 2 + 1, y1);
+            }
+
+            gridLines.push(dotted);
+            wglp.addLine(dotted);
         }
 
         wglp.update();
@@ -99,11 +155,14 @@ export class UI {
             xAxis,
             yAxis,
             yTicks,
+            gridLines,
             sampleCount: graphSampleCount,
             bounds: { Xmin, Xmax, Ymin, Ymax },
             ymaxValue: 1.2
         };
     }
+
+
 
     normalize_curve(curve) {
         let max = 0;

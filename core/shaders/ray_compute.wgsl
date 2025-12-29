@@ -32,13 +32,12 @@ struct FaceStats {
 };
 
 struct Material {
-    reflection        : array<f32, MAX_BANDS>, // reflected fraction
-    transmission      : array<f32, MAX_BANDS>, // straight-through transmission
     refraction        : array<f32, MAX_BANDS>, // refractive transmission
     attenuation       : array<f32, MAX_BANDS>, // volumetric attenuation per meter
     diffusion         : array<f32, MAX_BANDS>, // fraction of reflection that is diffuse
     diffraction       : array<f32, MAX_BANDS>, // low-frequency diffraction participation
-    refractive_index  : f32                    // Snell’s law index
+    speed_of_sound    : f32,                   // Speed of sound in material
+    density           : f32                    //Density of material       
 };
 
 struct RayStackEntry {
@@ -446,22 +445,26 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
             atomicAdd(&stats[absorbing_face_id].bounceCount, 1u);
             
             // ---- REFRACTION SETUP ----
-            let n1 = materials[curr_material].refractive_index;
-            let n2 = materials[next_material].refractive_index;
+            let c1 = materials[curr_material].speed_of_sound;
+            let c2 = materials[next_material].speed_of_sound;
+            let rho1 = materials[curr_material].density;
+            let rho2 = materials[next_material].density;
 
-            let cos_i = clamp(-dot(N, dir), 0.0, 1.0);
-            let eta   = n1 / n2;
+            let cos_i  = clamp(-dot(N, dir), 0.0, 1.0);
+            let eta    = c1 / c2;
             let sin2_t = eta * eta * (1.0 - cos_i * cos_i);
+            let has_refr = sin2_t <= 1.0;
+            let reflDir = normalize(dir + 2.0 * cos_i * N);
 
-            // ---- FRESNEL (DIRECTION SPLIT ONLY) ----
-            let R0 = pow((n1 - n2) / (n1 + n2), 2.0);
-            let R  = R0 + (1.0 - R0) * pow(1.0 - cos_i, 5.0);
-            let T  = 1.0 - R;
-
+            let Z1 = rho1 * c1;
+            let Z2 = rho2 * c2;
+            let Rt = pow((Z2 - Z1) / (Z2 + Z1), 2.0);
+            let Tt = 1.0 - Rt;
+            let grazing = pow(1.0 - cos_i, 2.0);
+            let R = clamp(Rt + (1.0 - Rt) * grazing, 0.0, 1.0);
+            let T = 1.0 - R;
 
             if (ray.depth < MAX_RAY_DEPTH && stackTop < i32(MAX_STACK_SIZE - 1u)) {
-
-                let reflDir = normalize(dir + 2.0 * cos_i * N);
 
                 var spec_energy = boundary_energy;
                 var diff_energy = boundary_energy;
@@ -473,8 +476,6 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                 var trans_sum = 0.0;
                 var refr_sum = 0.0;
 
-                let has_refr = sin2_t <= 1.0;
-
                 // ============================================================
                 // ENERGY SPLIT (PHYSICALLY CONSERVATIVE)
                 // ============================================================
@@ -482,37 +483,31 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
 
                     let E = boundary_energy[i];
 
-                    // --- material coefficients ---
-                    var refl = materials[boundary_material_id].reflection[i];
-                    var trans = materials[boundary_material_id].transmission[i];
-                    var refr  = materials[boundary_material_id].refraction[i];
+                    // ----------------------------------
+                    // REFLECTION
+                    // ----------------------------------
+                    let E_reflect_total = E * R;
 
-                    // enforce conservation (robust)
-                    let sum_rt = refl + trans + refr;
-                    if (sum_rt > 1.0) {
-                        let inv = 1.0 / sum_rt;
-                        refl *= inv;
-                        trans *= inv;
-                        refr  *= inv;
-                    }
-
-                    // --- reflection split ---
                     let kd = materials[boundary_material_id].diffusion[i];
                     let ks = 1.0 - kd;
 
-                    let E_reflect = E * refl;
-                    let E_spec = E_reflect * ks;
-                    let E_diff = E_reflect * kd;
+                    let E_spec = E_reflect_total * ks;
+                    let E_diff = E_reflect_total * kd;
 
-                    // --- transmission / refraction ---
-                    let E_trans = E * trans;
-                    let E_refr  = select(0.0, E * refr, has_refr);
+                    // ----------------------------------
+                    // TRANSMISSION / DIFFRACTION
+                    // ----------------------------------
+                    let scatter = materials[boundary_material_id].refraction[i];
 
-                    // --- store ---
-                    spec_energy[i] = E_spec;
-                    diff_energy[i] = E_diff;
+                    let E_trans_total = E * T;
+
+                    let E_refr  = select(0.0, E_trans_total * scatter, has_refr);
+                    let E_trans = E_trans_total * (1.0 - scatter);
+
+                    spec_energy[i]  = E_spec;
+                    diff_energy[i]  = E_diff;
                     trans_energy[i] = E_trans;
-                    refr_energy[i] = E_refr;
+                    refr_energy[i]  = E_refr;
 
                     spec_sum += E_spec;
                     diff_sum += E_diff;

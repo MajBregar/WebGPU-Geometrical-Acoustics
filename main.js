@@ -60,7 +60,7 @@ async function simulationLoop() {
 
     await renderer.renderFrame();
     const emitter_energy = loader.energyBands_CPU;
-    
+
     if (audio_engine.audioContext && audio_engine.isPlaying) {
 
         const frameData     = renderer.listenerEnergy;
@@ -109,10 +109,11 @@ async function simulationLoop() {
             reflections: reflections
         });
 
-        ui.updateGraph(outputGraph, ui.normalize_curve(room_coefficients));
+        ui.updateGraph(outputGraph, room_coefficients);
     }
 
     ui.updateGraph(inputGraph, ui.normalize_curve(emitter_energy));
+
 
     updateGPUFPS(start);
     requestAnimationFrame(simulationLoop);
