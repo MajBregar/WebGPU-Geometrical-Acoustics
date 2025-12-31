@@ -2,17 +2,9 @@
 A simple WebGPU-based simulation of geometrical acoustics. 
 
 # URGENT TODO
-- FIX SAMPLE RATE BEING HARDCODED
 - CORRECT MATERIAL COEFFICIENTS
-- FIX REFLECTION NORMALIZATION
+- FIX REFLECTION NORMALIZATION AND REFLECTION ACCUMULATOR UPDATING SPEED
+- EVAL
 
-# TODO
-- MAKE DIFFRACTION
-- MAKE INTERFERRENCE
-
-# VALIDATION
-- how to test energy conservation
-- correct energy changes according to equations
-- how to test distance correctiveness
 
 

@@ -4,6 +4,7 @@ const MAX_RAY_DEPTH   : u32 = __MAX_RAY_DEPTH__;
 const MAX_STACK_SIZE  : u32 = __MAX_STACK_SIZE__;
 const MATERIAL_AIR_ID : u32 = 0u;
 const INVALID_FACE_ID : u32 = 0xFFFFFFFFu;
+const DIFFRACTION_DIST_TO_EDGE_METERS : f32 = 0.1;
 
 struct RayUniforms {
     roomSize    : vec3<u32>,
@@ -213,12 +214,179 @@ fn cosine_hemisphere(N: vec3<f32>, rnd: vec2<f32>) -> vec3<f32> {
     return normalize(x * T + y * B + z * N);
 }
 
-fn should_diffract(dir: vec3<f32>, curr_voxel_id: vec3<i32>, next_voxel_id: u32) -> bool {
-    return false;
+fn cosine_hemisphere_weighted(
+    N: vec3<f32>,
+    D_in: vec3<f32>,
+    rnd: vec2<f32>
+) -> vec3<f32> {
+
+    var Dp = D_in - N * min(0.0, dot(D_in, N));
+    let lenDp = length(Dp);
+
+    if (lenDp < 1e-4) {
+        Dp = N;
+    } else {
+        Dp = Dp / lenDp;
+    }
+
+    let r = sqrt(rnd.x);
+    let phi = 2.0 * 3.14159265359 * rnd.y;
+
+    let x = r * cos(phi);
+    let y = r * sin(phi);
+    let z = sqrt(max(0.0, 1.0 - rnd.x));
+
+    let up = select(
+        vec3<f32>(0.0, 0.0, 1.0),
+        vec3<f32>(1.0, 0.0, 0.0),
+        abs(Dp.z) > 0.999
+    );
+
+    let T = normalize(cross(up, Dp));
+    let B = cross(Dp, T);
+
+    var dir = normalize(x * T + y * B + z * Dp);
+
+    if (dot(dir, N) < 0.0) {
+        dir = normalize(dir - 2.0 * dot(dir, N) * N);
+    }
+    return dir;
 }
-fn diffract_dir(dir: vec3<f32>, N: vec3<f32>) -> vec3<f32> {
-    return vec3<f32>(0.0);
+
+
+
+fn get_edge_flags(hitPos: vec3<f32>, axis: u32) -> vec4<i32> {
+    let l = fract(hitPos);
+    let scale = uni.voxelScale;
+
+    if (axis == 0u) {
+        // X face → YZ
+        return vec4<i32>(
+            select(0, -1, l.y * scale <= DIFFRACTION_DIST_TO_EDGE_METERS),          // Y-
+            select(0,  1, (1.0 - l.y) * scale <= DIFFRACTION_DIST_TO_EDGE_METERS),  // Y+
+            select(0, -1, l.z * scale <= DIFFRACTION_DIST_TO_EDGE_METERS),          // Z-
+            select(0,  1, (1.0 - l.z) * scale <= DIFFRACTION_DIST_TO_EDGE_METERS)   // Z+
+        );
+    }
+    else if (axis == 1u) {
+        // Y face → XZ
+        return vec4<i32>(
+            select(0, -1, l.x * scale <= DIFFRACTION_DIST_TO_EDGE_METERS),          // X-
+            select(0,  1, (1.0 - l.x) * scale <= DIFFRACTION_DIST_TO_EDGE_METERS),  // X+
+            select(0, -1, l.z * scale <= DIFFRACTION_DIST_TO_EDGE_METERS),          // Z-
+            select(0,  1, (1.0 - l.z) * scale <= DIFFRACTION_DIST_TO_EDGE_METERS)   // Z+
+        );
+    }
+    else {
+        // Z face → XY
+        return vec4<i32>(
+            select(0, -1, l.x * scale <= DIFFRACTION_DIST_TO_EDGE_METERS),          // X-
+            select(0,  1, (1.0 - l.x) * scale<= DIFFRACTION_DIST_TO_EDGE_METERS),  // X+
+            select(0, -1, l.y * scale<= DIFFRACTION_DIST_TO_EDGE_METERS),          // Y-
+            select(0,  1, (1.0 - l.y) * scale <= DIFFRACTION_DIST_TO_EDGE_METERS)   // Y+
+        );
+    }
 }
+
+
+
+fn try_voxel(v: vec3<i32>, roomDims: vec3<i32>) -> bool {
+    if (!valid_voxel_pos(v, roomDims)) { return false; }
+    let id = get_voxelID(v, roomDims);
+    return materialID[id] == MATERIAL_AIR_ID;
+}
+
+
+fn get_aperture_voxel(
+    hit_voxel: vec3<i32>,
+    hitPos: vec3<f32>,
+    axis: u32,
+    roomDims: vec3<i32>
+) -> vec3<i32> {
+
+    let e = get_edge_flags(hitPos, axis);
+
+    if (e.x == 0 && e.y == 0 && e.z == 0 && e.w == 0) {
+        return vec3<i32>(-1);
+    }
+
+    // Collect active edges
+    var edges: array<vec3<i32>, 2>;
+    var edgeCount = 0;
+
+    if (e.x != 0) { 
+        edges[edgeCount] = vec3<i32>(e.x, 0, 0);
+        edgeCount++;
+    }
+    if (e.y != 0) { 
+        edges[edgeCount] = vec3<i32>(e.y, 0, 0);
+        edgeCount++;
+    }
+    if (e.z != 0) { 
+        edges[edgeCount] = vec3<i32>(0, e.z, 0);
+        edgeCount++;
+    }
+    if (e.w != 0) { 
+        edges[edgeCount] = vec3<i32>(0, e.w, 0);
+        edgeCount++;
+    }
+
+    if (edgeCount == 1) {
+        var v = hit_voxel + edges[0];
+        if (try_voxel(v, roomDims)) {
+            return v;
+        }
+        return vec3<i32>(-1);
+    }
+
+    let corner = hit_voxel + edges[0] + edges[1];
+    if (try_voxel(corner, roomDims)) {
+        return corner;
+    }
+
+    for (var i = 0; i < 2; i++) {
+        let v = hit_voxel + edges[i];
+        if (try_voxel(v, roomDims)) {
+            return v;
+        }
+    }
+
+    return vec3<i32>(-1);
+}
+
+fn get_diffraction_ray_pos(
+    aperture_voxel: vec3<i32>,
+    hitPos: vec3<f32>,
+    axis: u32
+) -> vec3<f32> {
+
+    var p = hitPos;
+
+    if (axis == 0u) {
+        // X face
+        let faceX = f32(aperture_voxel.x);
+        p.x = faceX;
+        p.y = clamp(p.y, f32(aperture_voxel.y), f32(aperture_voxel.y + 1));
+        p.z = clamp(p.z, f32(aperture_voxel.z), f32(aperture_voxel.z + 1));
+    }
+    else if (axis == 1u) {
+        // Y face
+        let faceY = f32(aperture_voxel.y);
+        p.y = faceY;
+        p.x = clamp(p.x, f32(aperture_voxel.x), f32(aperture_voxel.x + 1));
+        p.z = clamp(p.z, f32(aperture_voxel.z), f32(aperture_voxel.z + 1));
+    }
+    else {
+        // Z face
+        let faceZ = f32(aperture_voxel.z);
+        p.z = faceZ;
+        p.x = clamp(p.x, f32(aperture_voxel.x), f32(aperture_voxel.x + 1));
+        p.y = clamp(p.y, f32(aperture_voxel.y), f32(aperture_voxel.y + 1));
+    }
+    return p;
+}
+
+
 
 
 fn hash_u32(x: u32) -> u32 {
@@ -362,38 +530,6 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                     ray_entered_face_id = INVALID_FACE_ID;
                 }
 
-                if (should_diffract(dir, voxel, nextID) && ray.depth < MAX_RAY_DEPTH && stackTop < i32(MAX_STACK_SIZE - 1u)) {
-
-                    // Allocate only when needed
-                    var diffract_energy : array<f32, MAX_BANDS>;
-                    var diffract_sum = 0.0;
-
-                    for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
-                        let kd = materials[curr_material].diffraction[i];
-                        let d  = ray_energy[i] * kd;
-
-                        diffract_energy[i] = d;
-                        ray_energy[i] -= d;
-
-                        diffract_sum += d;
-                    }
-
-                    if (diffract_sum > uni.energyCutoff) {
-                        let diffDir = diffract_dir(dir, N);
-
-                        stackTop++;
-                        rayStack[stackTop] = RayStackEntry(
-                            hitPos + diffDir * 1e-4,
-                            diffDir,
-                            diffract_energy,
-                            ray.depth + 1u,
-                            curr_material,
-                            new_flight_len,
-                            INVALID_FACE_ID
-                        );
-                    }
-                }
-
                 pos = hitPos + dir * 1e-4;
                 step++;
                 ray_flight_len = new_flight_len;
@@ -443,6 +579,48 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
             }
 
             atomicAdd(&stats[absorbing_face_id].bounceCount, 1u);
+
+            // ----------------------------------
+            // DIFFRACTION
+            // ----------------------------------
+
+            let aperture_voxel = get_aperture_voxel(next, hitPos, axis, roomDims);
+
+            if (aperture_voxel.x >= 0 && ray.depth < MAX_RAY_DEPTH && stackTop < i32(MAX_STACK_SIZE - 1u)) {
+                //diffraction
+                let diffraction_emission_pos = get_diffraction_ray_pos(aperture_voxel, hitPos, axis);
+
+                let seed = (((ray.depth * 73856093u) ^ ray.material) * 19349663u)
+                    ^ u32(hitPos.x * 4096.0)
+                    ^ u32(hitPos.y * 4096.0)
+                    ^ u32(hitPos.z * 4096.0);
+                let rnd = vec2<f32>(rand_f32(seed), rand_f32(seed ^ 0x9e3779b9u));
+                let diffraction_dir = cosine_hemisphere(dir, rnd);
+
+                var diffraction_energy = boundary_energy;
+
+                for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
+                    let E = boundary_energy[i];
+                    let D = materials[boundary_material_id].diffraction[i];
+
+                    boundary_energy[i]  = E * (1.0 - D);
+                    diffraction_energy[i] = E * D;
+                }
+
+                stackTop++;
+                rayStack[stackTop] = RayStackEntry(
+                    diffraction_emission_pos + diffraction_dir * 1e-3,
+                    diffraction_dir,
+                    diffraction_energy,
+                    ray.depth + 1u,
+                    curr_material,
+                    new_flight_len,
+                    INVALID_FACE_ID
+                );
+            }
+            
+
+
             
             // ---- REFRACTION SETUP ----
             let c1 = materials[curr_material].speed_of_sound;
@@ -477,7 +655,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                 var refr_sum = 0.0;
 
                 // ============================================================
-                // ENERGY SPLIT (PHYSICALLY CONSERVATIVE)
+                // ENERGY SPLIT
                 // ============================================================
                 for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
 
@@ -495,7 +673,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                     let E_diff = E_reflect_total * kd;
 
                     // ----------------------------------
-                    // TRANSMISSION / DIFFRACTION
+                    // TRANSMISSION / REFRACTION
                     // ----------------------------------
                     let scatter = materials[boundary_material_id].refraction[i];
 

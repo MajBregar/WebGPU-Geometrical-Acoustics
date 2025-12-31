@@ -97,7 +97,7 @@ async function simulationLoop() {
                 sampleRate
             );
             
-            console.log(reflections);
+            //console.log(reflections);
             
             audio_engine.smoothReflections(reflections);
 

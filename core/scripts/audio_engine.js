@@ -159,7 +159,7 @@ export class AudioEngine {
 
         const invDirect = 1.0 / directEnergy;
 
-        console.log(windowBins, directEnergy, invDirect);
+        //console.log(windowBins, directEnergy, invDirect);
         
 
         // ---- Extract & normalize reflections ----
