@@ -47,7 +47,7 @@ struct RayStackEntry {
     energy: array<f32, MAX_BANDS>,
     depth : u32,
     material : u32,
-    flight_len : f32,
+    ray_flight_time : f32,
     entered_face_id : u32
 };
 
@@ -310,7 +310,6 @@ fn get_aperture_voxel(
         return vec3<i32>(-1);
     }
 
-    // Collect active edges
     var edges: array<vec3<i32>, 2>;
     var edgeCount = 0;
 
@@ -451,7 +450,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
         var ray_energy = ray.energy;
         var curr_material = ray.material;
         var step = 0u;
-        var ray_flight_len = ray.flight_len;
+        var ray_flight_time = ray.ray_flight_time;
         var ray_entered_face_id = ray.entered_face_id;
 
         // ===== DDA LOOP =====
@@ -470,7 +469,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
             let dist_to_listener = distance(pos, uni.listenerPos);
 
             if (dist_to_listener <= uni.listenerRadius) {
-                let time_s = ray_flight_len / uni.speedOfSound;
+                let time_s = ray_flight_time;
 
                 let time_bin_f = time_s / irBinSize;
                 let time_bin   = min(u32(time_bin_f), uni.irBinCount - 1u);
@@ -478,10 +477,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                 let base = time_bin * MAX_BANDS;
 
                 for (var i: u32 = 0u; i < uni.energyBandCount; i++) {
-                    atomicAdd(
-                        &listenerEnergyBands[base + i],
-                        u32(ray_energy[i] * uni.precisionAdj)
-                    );
+                    atomicAdd(&listenerEnergyBands[base + i], u32(ray_energy[i] * uni.precisionAdj));
                 }
 
                 break;
@@ -491,7 +487,10 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
 
             // ---- VOXEL DDA ----
             let voxel = world_to_voxel(pos);
-            if (!valid_voxel_pos(voxel, roomDims)) { break; }
+            if (!valid_voxel_pos(voxel, roomDims)) { 
+                atomicAdd(&stats[0].absorbedEnergy, u32(total_energy * uni.precisionAdj));
+                break; 
+            }
 
             let info   = dda_step(pos, dir, voxel);
             let t      = info.x;
@@ -499,18 +498,19 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
             let hitPos = pos + dir * t;
 
             let next = get_collided_voxel(axis, voxel, dir);
-            if (!valid_voxel_pos(next, roomDims)) { break; }
+            if (!valid_voxel_pos(next, roomDims)) { 
+                atomicAdd(&stats[1].absorbedEnergy, u32(total_energy * uni.precisionAdj));
+                break; 
+            }
 
             let nextID        = get_voxelID(next, roomDims);
             let next_material = materialID[nextID];
 
             let distance_m = t * uni.voxelScale;
-            let new_flight_len = ray_flight_len + distance_m;
+            let new_flight_time = ray_flight_time + distance_m / materials[curr_material].speed_of_sound;
 
             var N = get_face_normal(axis, dir);
             if (dot(N, dir) > 0.0) { N = -N; }
-
-
 
             // ============================================================
             // NO MATERIAL CHANGE CALCULATIONS
@@ -528,11 +528,13 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                 if (ray_entered_face_id != INVALID_FACE_ID) {
                     atomicAdd(&stats[ray_entered_face_id].absorbedEnergy, u32(absorbed_energy * uni.precisionAdj));
                     ray_entered_face_id = INVALID_FACE_ID;
+                } else {
+                    atomicAdd(&stats[2].absorbedEnergy, u32(absorbed_energy * uni.precisionAdj));
                 }
 
                 pos = hitPos + dir * 1e-4;
                 step++;
-                ray_flight_len = new_flight_len;
+                ray_flight_time = new_flight_time;
                 continue;
             }
 
@@ -562,6 +564,8 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
             if (ray_entered_face_id != INVALID_FACE_ID) {
                 atomicAdd(&stats[ray_entered_face_id].absorbedEnergy, u32(absorbed_energy * uni.precisionAdj));
                 ray_entered_face_id = INVALID_FACE_ID;
+            } else {
+                atomicAdd(&stats[3].absorbedEnergy, u32(absorbed_energy * uni.precisionAdj));
             }
 
             let enterFace = local_face_index(axis, dir);
@@ -614,7 +618,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                     diffraction_energy,
                     ray.depth + 1u,
                     curr_material,
-                    new_flight_len,
+                    new_flight_time,
                     INVALID_FACE_ID
                 );
             }
@@ -636,10 +640,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
 
             let Z1 = rho1 * c1;
             let Z2 = rho2 * c2;
-            let Rt = pow((Z2 - Z1) / (Z2 + Z1), 2.0);
-            let Tt = 1.0 - Rt;
-            let grazing = pow(1.0 - cos_i, 2.0);
-            let R = clamp(Rt + (1.0 - Rt) * grazing, 0.0, 1.0);
+            let R = ((Z2 - Z1) / (Z2 + Z1)) * ((Z2 - Z1) / (Z2 + Z1));
             let T = 1.0 - R;
 
             if (ray.depth < MAX_RAY_DEPTH && stackTop < i32(MAX_STACK_SIZE - 1u)) {
@@ -735,7 +736,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                             spec_energy,
                             ray.depth + 1u,
                             curr_material,
-                            new_flight_len,
+                            new_flight_time,
                             INVALID_FACE_ID
                         );
                         spec_sum = 0.0;
@@ -758,7 +759,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                             diff_energy,
                             ray.depth + 1u,
                             curr_material,
-                            new_flight_len,
+                            new_flight_time,
                             INVALID_FACE_ID
                         );
                         diff_sum = 0.0;
@@ -776,7 +777,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                             refr_energy,
                             ray.depth + 1u,
                             next_material,
-                            new_flight_len,
+                            new_flight_time,
                             absorbing_face_id
                         );
                         refr_sum = 0.0;
@@ -791,7 +792,7 @@ fn trace_ray(startPos: vec3<f32>, dirInput: vec3<f32>) {
                             trans_energy,
                             ray.depth + 1u,
                             next_material,
-                            new_flight_len,
+                            new_flight_time,
                             absorbing_face_id
                         );
                         trans_sum = 0.0;

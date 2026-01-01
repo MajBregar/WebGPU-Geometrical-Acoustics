@@ -107,7 +107,7 @@ async function simulationLoop() {
 
         audio_engine.updateRoom({
             bands: room_coefficients,
-            reflections: reflections
+            reflections: []
         });
 
         ui.updateGraph(outputGraph, room_coefficients);

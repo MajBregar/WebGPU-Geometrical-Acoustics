@@ -184,6 +184,8 @@ export class Renderer {
         }
         
         this.precision_adjustment = Math.floor(BOOST_LOSSY * (U32_MAX / energy_sum));
+        //console.log(this.precision_adjustment);
+        
     }
 
 
@@ -421,6 +423,31 @@ export class Renderer {
         this.updateSpherePositions();
         //this.debugRayPositionTrace(faces);
         
+        //EVALUATION
+        
+        // const faceCount = loader.faceCount;
+        // const input_energy_vector = loader.energyBands_CPU;
+
+        // let energy_sum_input = 0.0;
+        // for (let i = 0; i < input_energy_vector.length; i++) {
+        //     energy_sum_input += input_energy_vector[i];
+        // }
+
+        // let energy_sum_faces = 0.0;
+        // for (let faceID = 0; faceID < faceCount; faceID++) {
+        //     const face = faces[faceID];
+        //     const enery_absorbed = face.absorbedEnergy;
+        //     energy_sum_faces += enery_absorbed;
+        // }
+
+        // let energy_sum_listener = 0.0;
+        // for (let i = 0; i < this.listenerEnergy.length; i++) {
+        //     energy_sum_listener += this.listenerEnergy[i];
+        // }
+
+        // console.log(energy_sum_input, energy_sum_faces / this.precision_adjustment, energy_sum_listener);
+        
+
 
         // ----------------------------------------------------
         // PASS 1: SHADOW MAP
