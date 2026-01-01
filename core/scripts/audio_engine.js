@@ -150,26 +150,24 @@ export class AudioEngine {
         const windowBins = Math.floor(this.directSoundInterval * sampleRate);
         const endBin = Math.min(firstBin + windowBins, broadbandIR.length);
 
-        let directEnergy = 0;
+        let direct_peak = 0.0;
         for (let i = firstBin; i < endBin; i++) {
-            directEnergy += broadbandIR[i];
+            direct_peak = Math.max(direct_peak, broadbandIR[i]);
         }
 
-        if (directEnergy < 1e-12) return scratch;
+        if (direct_peak < 1e-12) return scratch;
 
-        const invDirect = 1.0 / directEnergy;
+        const invDirect = 1.0 / direct_peak;
 
         //console.log(windowBins, directEnergy, invDirect);
         
-
-        // ---- Extract & normalize reflections ----
         for (let i = endBin; i < broadbandIR.length; i++) {
             const e = broadbandIR[i];
             if (e <= 0) continue;
 
             scratch.push({
                 delay: (i - firstBin) / sampleRate,
-                gain: e * invDirect
+                gain: Math.sqrt(e * invDirect)
             });
         }
 

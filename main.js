@@ -64,7 +64,7 @@ async function simulationLoop() {
     if (audio_engine.audioContext && audio_engine.isPlaying && !audio_engine.isPaused) {
 
         const frameData   = renderer.listenerEnergy;
-        const irBinCount  = 44000;
+        const irBinCount  = settings.SIMULATION.default_sample_rate;
         const sampleRate  = audio_engine.audioContext.sampleRate;
 
         const accumulatedCoefs = audio_engine.accumulateCoefs(
@@ -109,6 +109,20 @@ async function simulationLoop() {
             bands: room_coefficients,
             reflections: []
         });
+
+        ui.updateGraph(outputGraph, room_coefficients);
+    } else if (audio_engine.audioContext && audio_engine.isPaused) {
+        const frameData   = renderer.listenerEnergy;
+        const irBinCount  = settings.SIMULATION.default_sample_rate;        
+        const sampleRate  = audio_engine.audioContext.sampleRate;
+
+        const room_coefficients = audio_engine.computeTransmissionCoefs(
+            frameData,
+            irBinCount,
+            audio_engine.bandCount,
+            sampleRate,
+            emitter_energy
+        );
 
         ui.updateGraph(outputGraph, room_coefficients);
     }

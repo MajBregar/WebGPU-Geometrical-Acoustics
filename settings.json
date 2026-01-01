@@ -1,5 +1,4 @@
 {
-
     "SIMULATION" : {
         "room_dimensions" : [32, 16, 32],
         "background_color" : [200, 200, 200, 255],
