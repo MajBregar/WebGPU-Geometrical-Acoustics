@@ -1,6 +1,6 @@
 # WebGPU Geometrical Acoustics
 
-A simple real-time WebGPU-based simulation of geometrical acoustics using ray tracing to model sound propagation, absorption, and reflections in a voxelized room.
+A simple real-time WebGPU-based simulation of geometrical acoustics using ray tracing to model sound propagation in a voxelized room.
 
 ---
 
@@ -21,9 +21,9 @@ A simple real-time WebGPU-based simulation of geometrical acoustics using ray tr
 ### Recursion Settings
 Controls simulation accuracy and performance:
 - **Max recursion depth**  
-  Limits how many generations of child rays are spawned. Lower values improve performance.
+  Limits how many generations of child rays are emitted. Lower values improve performance.
 - **Max recursion stack size**  
-  Limits how many active child rays a single parent ray can have. Lower values reduce GPU workload.
+  Limits how many active child rays a single original ray can have. Lower values reduce GPU workload.
 
 Click **Save** to reload the simulation and apply the new settings to the shader.
 
@@ -57,6 +57,7 @@ The **Sensitivity** slider controls color scaling for both modes, as values can 
    (the button will change to **Play** once ready)
 3. During playback, use **Pause** to stop both audio and simulation updates
 
+Three Non Copyright songs are available inside the **audio_inputs** directory.
 ---
 
 ### Graphs
@@ -66,17 +67,17 @@ Each graph includes **+** and **−** buttons for zooming in and out of the sign
 
 ## Resources
 
-### Libraries
-- **FFT.js** — Fast Fourier Transform library by Fedor Indutny  
+### Used Libraries
+- **FFT.js** — Fast Fourier Transform library
   https://github.com/indutny/fft.js
 - **glMatrix** — High-performance vector and matrix math library  
   https://github.com/toji/gl-matrix
-- **webgl-plot** — Lightweight plotting library for WebGL  
+- **webgl-plot** — Lightweight plotting library
   https://github.com/danchitnis/webgl-plot
 
-### Literature
-- This project is heavily inspired by and informed by the work of **Taylor, Micah; Meng, Francis (2018)**  
+### Used Literature
+- This project is heavily inspired by the work of **Taylor, Micah; Meng, Francis (2018)**  
   *Web-based Geometric Acoustic Simulator*  
-  Proceedings of the 23rd International ACM Conference on 3D Web Technology (Web3D ’18)
+  Proceedings of the 23rd International ACM Conference on 3D Web Technology
 
 

@@ -17,10 +17,10 @@
         "max_ray_steps" : 5000,
         "voxel_scale_meters" : 0.5,
         "ray_energy_min" : 0.00001,
-        "emitter_position" : [8.5, 8.5, 8.5],
-        "listener_position" : [8.5, 8.5, 12.5],
+        "emitter_position" : [6.5, 4.5, 6.5],
+        "listener_position" : [20.5, 4.5, 17.5],
         "listener_radius" : 1.5,
-        "heatmap_sensitivity" : 4.15,
+        "heatmap_sensitivity" : 7.15,
 
         "max_recursion_level" : 3,
         "max_recursion_entries" : 12,
@@ -96,8 +96,8 @@
         "start_zoom" :40,
         "min_zoom" : 0.5,
         "max_zoom" : 700,
-        "emitter_start_zoom" : 16,
-        "listener_start_zoom" : -1
+        "emitter_start_zoom" : 18,
+        "listener_start_zoom" : -3
     }
 
     
