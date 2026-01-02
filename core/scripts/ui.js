@@ -23,10 +23,13 @@ export class UI {
         this.inputGraph  = this.createGraph("energyPlot1");
         this.inputGraph.yScale = 1.0 / this.emitter_zoom;
         this.addYLabels("energyPlot1", this.inputGraph.bounds, this.inputGraph.ymaxValue, this.emitter_zoom);
+        this.addXLabels("energyPlot1", this.inputGraph.bounds, this.inputGraph.gridCount);
 
         this.outputGraph = this.createGraph("energyPlot2");
         this.outputGraph.yScale = 1.0 / this.listener_zoom;
         this.addYLabels("energyPlot2", this.outputGraph.bounds, this.outputGraph.ymaxValue, this.listener_zoom);
+        this.addXLabels("energyPlot2", this.outputGraph.bounds, this.outputGraph.gridCount);
+
 
         this.initPlotButtons();
     }
@@ -36,13 +39,15 @@ export class UI {
         const container = canvas.parentElement;
 
         container.querySelectorAll(".y-label").forEach(e => e.remove());
+        const containerWidth = container.clientWidth;
+
 
         const YTICKS = [0, 0.25, 0.5, 0.75, 1.0];
 
         const heightPx = canvas.height;
         const widthPx  = canvas.width;
 
-        const yAxisOffset = 0.03;
+        const yAxisOffset = 0.05;
         const yAxisX = bounds.Xmin + yAxisOffset;
         const xPixel = ((yAxisX + 1) / 2) * widthPx;
 
@@ -56,11 +61,49 @@ export class UI {
             label.textContent = value > 1 ? value.toString() : value.toFixed(2);
 
             label.style.top  = `${yPixel - 7}px`;
-            label.style.left = `${xPixel - 8}px`;
+            label.style.right = `${containerWidth - xPixel + 8}px`;
 
             container.appendChild(label);
         }
     }
+
+    addXLabels(canvasId, bounds, gridCount) {
+        const canvas = document.getElementById(canvasId);
+        const container = canvas.parentElement;
+        const band_centers = this.settings.SIMULATION.band_centers;
+
+        container.querySelectorAll(".x-label").forEach(e => e.remove());
+
+        const width  = canvas.width;
+        const height = canvas.height;
+
+        const yAxisOffset = 0.07;
+        const X_AXIS_START = bounds.Xmin + yAxisOffset;
+        const X_AXIS_END   = bounds.Xmax;
+
+        // Pixel Y just BELOW the raised x-axis
+        const yPixel =
+            (1 - (bounds.Ymin + 1) / 2) * height + 10;
+
+
+
+        for (let i = 0; i < gridCount; i++) {
+            const t = i / (gridCount - 1);
+            const xGraph = X_AXIS_START + t * (X_AXIS_END - X_AXIS_START);
+            const xPixel = ((xGraph + 1) / 2) * width;
+
+            const label = document.createElement("div");
+            label.className = "x-label";
+            label.textContent = Math.round(band_centers[i]).toString();
+
+            label.style.left = `${xPixel - 10}px`;
+            label.style.top  = `${yPixel}px`;
+
+            container.appendChild(label);
+        }
+    }
+
+
 
     initPlotButtons() {
 
@@ -126,14 +169,16 @@ export class UI {
         plot.height = plot.clientHeight;
 
         const graphSampleCount = this.settings.SIMULATION.energy_bands;
-        const offset = 0.05;
+
+        // Increased offset to make room for X labels
+        const offset = 0.2;
 
         const Xmin = -1 + offset;
         const Xmax =  1 - offset;
         const Ymin = -1 + offset;
         const Ymax =  1 - offset;
 
-        const yAxisOffset = 0.12;
+        const yAxisOffset = 0.07;
         const Y_AXIS_X = Xmin + yAxisOffset;
 
         const X_AXIS_START = Y_AXIS_X;
@@ -141,7 +186,12 @@ export class UI {
 
         const wglp = new WebglPlot(plot);
 
-        const mainLine = new WebglLine(new ColorRGBA(1, 0, 0, 1), graphSampleCount);
+        /* ---------------- Main data line ---------------- */
+
+        const mainLine = new WebglLine(
+            new ColorRGBA(1, 0, 0, 1),
+            graphSampleCount
+        );
         mainLine.lineWidth = 2;
 
         for (let i = 0; i < graphSampleCount; i++) {
@@ -152,26 +202,33 @@ export class UI {
 
         wglp.addLine(mainLine);
 
+        /* ---------------- Axes ---------------- */
+
         const xAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
-        xAxis.setX(0, X_AXIS_START); xAxis.setY(0, Ymin);
-        xAxis.setX(1, X_AXIS_END);   xAxis.setY(1, Ymin);
+        xAxis.setX(0, X_AXIS_START);
+        xAxis.setY(0, Ymin);
+        xAxis.setX(1, X_AXIS_END);
+        xAxis.setY(1, Ymin);
         wglp.addLine(xAxis);
 
         const yAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
-        yAxis.setX(0, Y_AXIS_X); yAxis.setY(0, Ymin);
-        yAxis.setX(1, Y_AXIS_X); yAxis.setY(1, Ymax);
+        yAxis.setX(0, Y_AXIS_X);
+        yAxis.setY(0, Ymin);
+        yAxis.setX(1, Y_AXIS_X);
+        yAxis.setY(1, Ymax);
         wglp.addLine(yAxis);
+
+        /* ---------------- Y ticks ---------------- */
 
         const YTICKS = [0, 0.25, 0.5, 0.75, 1.0];
         const yTicks = [];
 
-        for (let tVal of YTICKS) {
+        for (const tVal of YTICKS) {
             const ty = Ymin + (tVal / 1.2) * (Ymax - Ymin);
             const tick = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
 
             tick.setX(0, Y_AXIS_X);
             tick.setY(0, ty);
-
             tick.setX(1, Y_AXIS_X + 0.03);
             tick.setY(1, ty);
 
@@ -179,12 +236,13 @@ export class UI {
             wglp.addLine(tick);
         }
 
+        /* ---------------- Vertical dotted grid ---------------- */
+
         const GRID_COUNT = 10;
         const gridLines = [];
 
         for (let i = 0; i < GRID_COUNT; i++) {
             const t = i / (GRID_COUNT - 1);
-
             const gx = X_AXIS_START + t * (X_AXIS_END - X_AXIS_START);
 
             const SEGMENTS = 20;
@@ -199,7 +257,6 @@ export class UI {
 
                 dotted.setX(s * 2,     gx);
                 dotted.setY(s * 2,     y0);
-
                 dotted.setX(s * 2 + 1, gx);
                 dotted.setY(s * 2 + 1, y1);
             }
@@ -218,10 +275,12 @@ export class UI {
             yTicks,
             gridLines,
             sampleCount: graphSampleCount,
+            gridCount: GRID_COUNT,
             bounds: { Xmin, Xmax, Ymin, Ymax },
             ymaxValue: 1.2
         };
     }
+
 
 
 

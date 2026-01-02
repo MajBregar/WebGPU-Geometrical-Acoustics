@@ -132,14 +132,23 @@ h3 {
 
 .y-label {
     position: absolute;
-    left: 0;
-    transform: translateX(-6px);
     font-size: 12px;
     font-family: monospace;
     color: black;
     pointer-events: none;
+    white-space: nowrap;
+    text-align: right;
 }
 
+
+.x-label {
+    position: absolute;
+    font-size: 11px;
+    color: #000;
+    pointer-events: none;
+    user-select: none;
+    white-space: nowrap;
+}
 
 .graphHeader {
     display: flex;

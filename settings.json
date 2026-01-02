@@ -37,6 +37,18 @@
             [5657, 11314], 
             [11314, 22627]
         ],
+        "band_centers" : [
+            31.11,
+            62.23,
+            124.80,
+            250.32,
+            500.28,
+            999.85,
+            1999.70,
+            3999.75,
+            8000.21,
+            16000.06
+        ],
 
         "direct_sound_interval" : 0.030,
         "max_reflections" : 16,
@@ -78,7 +90,7 @@
 
     "CONTROLS" : {
         "mouse_sensitivity": 0.004,
-        "zoom_sensitivity": 0.05,
+        "zoom_sensitivity": 0.02,
         "start_yaw" : 1.4,
         "start_pitch" : 0.5,
         "start_zoom" :40,
