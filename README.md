@@ -14,6 +14,11 @@ A simple real-time WebGPU-based simulation of geometrical acoustics using ray tr
   ```
 - Open the localhost URL in your browser
 
+- In case of any issues with MIME use this python script:
+  ```bash
+  python server.py
+  ```
+
 ---
 
 ## How to Use

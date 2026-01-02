@@ -369,9 +369,6 @@ export class Loader {
         const cellCount = bandCount * binCount;
         const byteSize  = cellCount * 4;
 
-        // ============================================================
-        // GPU STORAGE: impulse response histogram
-        // ============================================================
         this.listener_GPU_Buffer = device.createBuffer({
             size: byteSize,
             usage: GPUBufferUsage.STORAGE |
@@ -379,22 +376,13 @@ export class Loader {
                 GPUBufferUsage.COPY_DST
         });
 
-        // ============================================================
-        // GPU READBACK BUFFER
-        // ============================================================
         this.listener_GPU_ReadBack = device.createBuffer({
             size: byteSize,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
         });
 
-        // ============================================================
-        // CPU VIEW (decoded IR)
-        // ============================================================
         this.listenerBands_CPU = new Float32Array(cellCount);
 
-        // ============================================================
-        // CLEAR BUFFER (all zeros)
-        // ============================================================
         this.listenerClear_CPU = new Uint32Array(cellCount);
 
         this.listenerClear_GPU_Buffer = device.createBuffer({
@@ -443,8 +431,6 @@ export class Loader {
         const voxel_to_face = this.voxelToFaceID_CPU;
         const mesh = builder.buildStaticMesh(face_to_voxel, voxel_to_face, this.vertexSize4Bytes);
 
-
-        // Store CPU copies so we can modify vertex colors later:
         this.vertexData_CPU = mesh.vertices.slice();
         this.indexData_CPU  = mesh.indices.slice();
         

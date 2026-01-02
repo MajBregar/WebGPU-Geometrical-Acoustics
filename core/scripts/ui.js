@@ -81,11 +81,8 @@ export class UI {
         const X_AXIS_START = bounds.Xmin + yAxisOffset;
         const X_AXIS_END   = bounds.Xmax;
 
-        // Pixel Y just BELOW the raised x-axis
         const yPixel =
             (1 - (bounds.Ymin + 1) / 2) * height + 10;
-
-
 
         for (let i = 0; i < gridCount; i++) {
             const t = i / (gridCount - 1);
@@ -170,7 +167,6 @@ export class UI {
 
         const graphSampleCount = this.settings.SIMULATION.energy_bands;
 
-        // Increased offset to make room for X labels
         const offset = 0.2;
 
         const Xmin = -1 + offset;
@@ -186,8 +182,6 @@ export class UI {
 
         const wglp = new WebglPlot(plot);
 
-        /* ---------------- Main data line ---------------- */
-
         const mainLine = new WebglLine(
             new ColorRGBA(1, 0, 0, 1),
             graphSampleCount
@@ -202,8 +196,6 @@ export class UI {
 
         wglp.addLine(mainLine);
 
-        /* ---------------- Axes ---------------- */
-
         const xAxis = new WebglLine(new ColorRGBA(0, 0, 0, 1), 2);
         xAxis.setX(0, X_AXIS_START);
         xAxis.setY(0, Ymin);
@@ -217,8 +209,6 @@ export class UI {
         yAxis.setX(1, Y_AXIS_X);
         yAxis.setY(1, Ymax);
         wglp.addLine(yAxis);
-
-        /* ---------------- Y ticks ---------------- */
 
         const YTICKS = [0, 0.25, 0.5, 0.75, 1.0];
         const yTicks = [];
@@ -235,8 +225,6 @@ export class UI {
             yTicks.push(tick);
             wglp.addLine(tick);
         }
-
-        /* ---------------- Vertical dotted grid ---------------- */
 
         const GRID_COUNT = 10;
         const gridLines = [];
@@ -625,7 +613,6 @@ export class UI {
 
             saving = true;
 
-            // --- existing behavior ---
             renderer.requestPipelineRebuild();
             engine.reload();
 
@@ -638,9 +625,7 @@ export class UI {
             fileLabel.textContent = "No file selected";
             button.textContent = "Load";
             button.disabled = true;
-            // -------------------------
 
-            // --- save feedback ---
             btn.textContent = "Saved";
             btn.disabled = true;
 
