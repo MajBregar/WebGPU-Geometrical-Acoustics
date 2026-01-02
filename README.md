@@ -57,7 +57,8 @@ The **Sensitivity** slider controls color scaling for both modes, as values can 
    (the button will change to **Play** once ready)
 3. During playback, use **Pause** to stop both audio and simulation updates
 
-Three Non Copyright songs are available inside the **audio_inputs** directory.
+Three Non-Copyrighted songs are available inside the **audio_inputs** directory.
+
 ---
 
 ### Graphs
